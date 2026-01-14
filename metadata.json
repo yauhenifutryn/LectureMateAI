@@ -1,0 +1,8 @@
+{
+  "name": "LectureMate AI",
+  "description": "An intelligent teaching assistant that converts lecture audio into structured study guides, identifying key concepts, logistics, and action items with precision timestamps.",
+  "requestFramePermissions": [
+    "microphone",
+    "display-capture"
+  ]
+}

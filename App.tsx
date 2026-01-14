@@ -1,0 +1,562 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { AppStatus, FileData, AnalysisResult, ChatMessage } from './types';
+import { analyzeAudioLecture, initializeChatSession } from './services/geminiService';
+import { Chat } from '@google/genai';
+import FileUpload from './components/FileUpload';
+import AudioRecorder from './components/AudioRecorder';
+import ProcessingState from './components/ProcessingState';
+import StudyGuide from './components/StudyGuide';
+import ChatInterface from './components/ChatInterface';
+import { Icons } from './components/Icon';
+
+type AudioInputMode = 'upload' | 'record';
+type Tab = 'study_guide' | 'transcript' | 'chat';
+
+const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
+
+const App: React.FC = () => {
+  const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
+  
+  // Inputs
+  const [audioInputMode, setAudioInputMode] = useState<AudioInputMode>('upload');
+  const [audioFile, setAudioFile] = useState<FileData | null>(null);
+  const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
+  const [userContext, setUserContext] = useState('');
+  
+  // Output
+  const [result, setResult] = useState<AnalysisResult | null>(null);
+  const [activeTab, setActiveTab] = useState<Tab>('study_guide');
+  const [error, setError] = useState<string | null>(null);
+
+  // Chat State
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const chatSessionRef = useRef<Chat | null>(null);
+
+  // UI State
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  
+  // 1. Safety: Prevent accidental reloads
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const isWorking = status === AppStatus.UPLOADING || status === AppStatus.PROCESSING;
+      const hasUnsavedData = audioFile !== null; 
+      
+      if (isWorking || hasUnsavedData || result) {
+        e.preventDefault();
+        e.returnValue = ''; 
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [status, audioFile, result]);
+
+  // 2. Backup: Restore Study Guide from LocalStorage on mount
+  useEffect(() => {
+    const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    if (savedData) {
+      try {
+        const parsed = JSON.parse(savedData);
+        if (parsed.result && parsed.result.studyGuide) {
+          console.log("Restoring session from backup");
+          setResult(parsed.result);
+          setStatus(AppStatus.COMPLETED);
+          // Note: We don't restore Chat Session history automatically to save complexity with SDK hydration,
+          // but we could if we re-initialized the session with history.
+        }
+      } catch (e) {
+        console.error("Failed to restore backup:", e);
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+      }
+    }
+  }, []);
+
+  // 3. Backup: Save Study Guide to LocalStorage whenever it changes
+  useEffect(() => {
+    if (result) {
+      try {
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+          result,
+          timestamp: Date.now()
+        }));
+      } catch (e) {
+        console.error("Failed to save backup to localStorage (quota exceeded?)", e);
+      }
+    }
+  }, [result]);
+
+  // Initialize Chat Session when result is available and tab is switched to chat
+  useEffect(() => {
+    if (result && !chatSessionRef.current) {
+      try {
+        console.log("Initializing Chat Session...");
+        chatSessionRef.current = initializeChatSession(result.transcript, result.studyGuide);
+      } catch (e) {
+        console.error("Failed to init chat", e);
+      }
+    }
+  }, [result]);
+
+  const handleAudioSelect = (files: FileData[]) => {
+    if (files.length > 0) {
+      setAudioFile(files[0]);
+      setError(null);
+    }
+  };
+
+  const handleSlideSelect = (files: FileData[]) => {
+    setSlideFiles(prev => [...prev, ...files]);
+  };
+
+  const removeSlide = (id: string) => {
+    setSlideFiles(prev => prev.filter(f => f.id !== id));
+  };
+
+  const handleRecordingComplete = (file: File) => {
+    const previewUrl = URL.createObjectURL(file);
+    setAudioFile({ 
+      file, 
+      previewUrl,
+      id: 'recording' 
+    });
+    setError(null);
+  };
+
+  const handleGenerate = async () => {
+    if (!audioFile) {
+      setError("Please provide an audio recording of the lecture.");
+      return;
+    }
+
+    try {
+      setStatus(AppStatus.UPLOADING);
+      console.log("Starting Analysis...");
+      
+      const slides = slideFiles.map(s => s.file);
+      
+      setStatus(AppStatus.PROCESSING);
+      
+      const analysis = await analyzeAudioLecture(
+        audioFile.file, 
+        slides, 
+        userContext
+      );
+      
+      setResult(analysis);
+      setStatus(AppStatus.COMPLETED);
+      
+      // Reset Chat
+      setChatMessages([]);
+      chatSessionRef.current = null; // Will be re-created by useEffect
+
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "An unexpected error occurred during analysis.");
+      setStatus(AppStatus.ERROR);
+    }
+  };
+
+  const handleCancelProcessing = () => {
+    if (window.confirm("Stop processing? The current analysis will be lost.")) {
+      setStatus(AppStatus.IDLE);
+      console.log("User cancelled processing.");
+    }
+  };
+
+  // Replaces window.confirm with internal state for reliability
+  const handleResetClick = () => {
+    setShowResetConfirm(true);
+  };
+
+  const handleConfirmReset = () => {
+    setAudioFile(null);
+    setSlideFiles([]);
+    setResult(null);
+    setUserContext('');
+    setActiveTab('study_guide');
+    setStatus(AppStatus.IDLE);
+    setError(null);
+    setChatMessages([]);
+    chatSessionRef.current = null;
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setShowResetConfirm(false);
+  };
+
+  const handleCancelReset = () => {
+    setShowResetConfirm(false);
+  };
+
+  const handleDownloadMarkdown = () => {
+    if (!result) return;
+    const blob = new Blob([result.studyGuide], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `StudyGuide_${audioFile?.file.name.split('.')[0] || 'Lecture'}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadTranscript = () => {
+    if (!result) return;
+    const blob = new Blob([result.transcript], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Transcript_${audioFile?.file.name.split('.')[0] || 'Lecture'}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
+      {/* Header */}
+      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-2">
+            <div className="bg-primary-600 p-1.5 rounded-lg text-white">
+              <Icons.BookOpen size={24} />
+            </div>
+            <h1 className="text-xl font-bold font-serif text-slate-900 tracking-tight">LectureMate AI</h1>
+          </div>
+          <div className="text-sm text-slate-500 font-medium hidden sm:block">
+            The Master Tutor
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 md:mt-12">
+        {/* Intro Section */}
+        {status === AppStatus.IDLE && (
+          <div className="text-center mb-8 md:mb-10">
+            <h2 className="text-3xl md:text-4xl font-serif font-bold text-slate-900 mb-3 md:mb-4">
+              Comprehensive <span className="text-primary-600">Lecture Synthesis</span>
+            </h2>
+            <p className="text-base md:text-lg text-slate-600 max-w-2xl mx-auto px-4">
+              Combine your lecture audio, slides, and notes. Our AI synthesizes them into a single, exam-ready study guide.
+            </p>
+          </div>
+        )}
+
+        {/* Error Message */}
+        {status === AppStatus.ERROR && (
+          <div className="max-w-2xl mx-auto mb-8 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+            <div className="flex items-center space-x-3 text-red-700">
+              <Icons.AlertCircle />
+              <span>{error}</span>
+            </div>
+            <button 
+              onClick={() => setStatus(AppStatus.IDLE)}
+              className="text-sm font-semibold text-red-800 hover:text-red-900 underline"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* INPUT FORM - Only show when IDLE */}
+        {status === AppStatus.IDLE && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 animate-fade-in items-stretch">
+            
+            {/* 1. Audio Source (Required) */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
+                  <Icons.FileAudio size={20} className="text-primary-600" />
+                  Lecture Recording <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Required</span>
+                </h3>
+                {!audioFile && (
+                  <div className="flex bg-slate-100 rounded-lg p-1 h-9 items-center">
+                    <button 
+                      onClick={() => setAudioInputMode('upload')}
+                      className={`px-3 h-full text-xs font-medium rounded-[0.375rem] transition-all flex items-center ${audioInputMode === 'upload' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Upload
+                    </button>
+                    <button 
+                       onClick={() => setAudioInputMode('record')}
+                       className={`px-3 h-full text-xs font-medium rounded-[0.375rem] transition-all flex items-center ${audioInputMode === 'record' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+                    >
+                      Record
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 min-h-[260px] flex flex-col relative">
+                {!audioFile ? (
+                   audioInputMode === 'upload' ? (
+                     <FileUpload 
+                       onFileSelect={handleAudioSelect} 
+                       accept="audio/*"
+                       label="Upload Audio or Video"
+                       subLabel="MP3, WAV, MP4, MOV (Max 2GB)"
+                     />
+                   ) : (
+                     <AudioRecorder onRecordingComplete={handleRecordingComplete} />
+                   )
+                ) : (
+                  <div className="h-full flex flex-col justify-center space-y-4 border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50/50 p-6">
+                     <div className="bg-white rounded-xl p-4 flex items-center justify-between shadow-sm border border-slate-100">
+                        <div className="flex items-center gap-3 overflow-hidden">
+                          <div className="bg-primary-100 p-2 rounded-lg text-primary-600">
+                            <Icons.FileAudio size={20} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-slate-800 truncate text-sm">{audioFile.file.name}</p>
+                            <p className="text-xs text-slate-500">{(audioFile.file.size / (1024*1024)).toFixed(2)} MB</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <a 
+                            href={audioFile.previewUrl} 
+                            download={audioFile.file.name}
+                            className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-50 rounded-lg transition-colors"
+                          >
+                            <Icons.Download size={18} />
+                          </a>
+                          <button onClick={() => setAudioFile(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                            <Icons.X size={18} />
+                          </button>
+                        </div>
+                     </div>
+                     <video 
+                       key={audioFile.previewUrl} 
+                       src={audioFile.previewUrl} 
+                       controls 
+                       className="w-full max-h-[300px] rounded-lg bg-black" 
+                     />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Slides Source */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
+                  <Icons.FileText size={20} className="text-primary-600" />
+                  Lecture Slides <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Optional</span>
+                </h3>
+              </div>
+
+              <div className="flex-1 min-h-[260px] flex flex-col relative">
+                {slideFiles.length === 0 ? (
+                  <FileUpload 
+                    onFileSelect={handleSlideSelect} 
+                    accept=".pdf"
+                    multiple={true}
+                    label="Upload Slides"
+                    subLabel="PDF format only (Multiple allowed)"
+                    icon={<Icons.FileText size={32} />}
+                  />
+                ) : (
+                  <div className="h-full flex flex-col border-2 border-dashed border-slate-200 rounded-[1.5rem] bg-slate-50/50 p-6">
+                     <div className="flex-1 overflow-y-auto max-h-[200px] space-y-2 pr-1 custom-scrollbar">
+                       {slideFiles.map((file) => (
+                         <div key={file.id} className="bg-white rounded-lg p-3 flex items-center justify-between border border-slate-100 shadow-sm">
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className="bg-orange-100 p-1.5 rounded-lg text-orange-600">
+                                <Icons.FileText size={16} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="font-medium text-slate-800 truncate text-xs">{file.file.name}</p>
+                              </div>
+                            </div>
+                            <button onClick={() => removeSlide(file.id!)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors">
+                              <Icons.X size={16} />
+                            </button>
+                         </div>
+                       ))}
+                     </div>
+                     <div className="mt-4 pt-4 border-t border-slate-200/50">
+                       <div className="flex items-center justify-between">
+                         <span className="text-xs font-medium text-slate-500">{slideFiles.length} file{slideFiles.length !== 1 && 's'} attached</span>
+                         <label className="text-primary-600 text-xs cursor-pointer hover:text-primary-700 font-semibold bg-white px-3 py-1.5 rounded-lg border border-primary-100 shadow-sm transition-all hover:shadow-md flex items-center gap-1">
+                            <Icons.UploadCloud size={14} />
+                            Add more
+                            <input type="file" accept=".pdf" multiple className="hidden" onChange={(e) => {
+                               if(e.target.files && e.target.files.length > 0) {
+                                 const newFiles: FileData[] = [];
+                                 const fileList = e.target.files;
+                                 for (let i = 0; i < fileList.length; i++) {
+                                   const f = fileList[i];
+                                   newFiles.push({ file: f, previewUrl: URL.createObjectURL(f), id: Math.random().toString(36).substring(7) });
+                                 }
+                                 handleSlideSelect(newFiles);
+                               }
+                            }}/>
+                         </label>
+                       </div>
+                     </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 3. User Context */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+               <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-base">
+                <Icons.BookOpen size={20} className="text-primary-600" />
+                Focus & Instructions <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Optional</span>
+              </h3>
+              <textarea
+                value={userContext}
+                onChange={(e) => setUserContext(e.target.value)}
+                placeholder="Example: Focus heavily on the math behind margin calls..."
+                className="w-full h-24 rounded-xl border-slate-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 text-sm p-4 border resize-none bg-white text-slate-900 placeholder:text-slate-400"
+              />
+            </div>
+
+            {/* Generate Button */}
+            <div className="md:col-span-2">
+              <button
+                onClick={handleGenerate}
+                disabled={!audioFile}
+                className={`
+                  w-full py-4 px-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg
+                  ${audioFile 
+                    ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white hover:shadow-xl hover:-translate-y-0.5' 
+                    : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}
+                `}
+              >
+                <Icons.FileText size={22} />
+                <span>Generate Master Study Guide</span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Processing State */}
+        {(status === AppStatus.UPLOADING || status === AppStatus.PROCESSING) && (
+          <ProcessingState onCancel={handleCancelProcessing} />
+        )}
+
+        {/* Results View */}
+        {status === AppStatus.COMPLETED && result && (
+          <div className="animate-fade-in space-y-6">
+             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-2xl font-serif font-bold text-slate-900">Analysis Result</h2>
+                  <p className="text-slate-500 text-sm">
+                    {slideFiles.length > 0 ? `Based on audio & ${slideFiles.length} slides` : 'Based on audio analysis'}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  {showResetConfirm ? (
+                    <div className="flex items-center gap-2 animate-fade-in">
+                        <span className="text-sm text-slate-500 hidden sm:inline">Are you sure?</span>
+                        <button 
+                            onClick={handleConfirmReset}
+                            className="px-3 py-2 text-sm font-bold text-white bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+                        >
+                            Yes, Reset
+                        </button>
+                        <button 
+                            onClick={handleCancelReset}
+                            className="px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={handleResetClick}
+                      className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      Start Over
+                    </button>
+                  )}
+
+                  {activeTab === 'study_guide' ? (
+                    <button 
+                      onClick={handleDownloadMarkdown}
+                      className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-primary-600 rounded-lg hover:bg-primary-700 shadow-sm transition-colors"
+                    >
+                      <Icons.Download size={16} />
+                      <span className="hidden sm:inline">Download Notes</span>
+                      <span className="sm:hidden">Notes</span>
+                    </button>
+                  ) : (
+                    <button 
+                      onClick={handleDownloadTranscript}
+                      className="flex items-center space-x-2 px-4 py-2 text-sm font-medium text-white bg-slate-700 rounded-lg hover:bg-slate-800 shadow-sm transition-colors"
+                    >
+                      <Icons.Download size={16} />
+                      <span className="hidden sm:inline">Download Transcript</span>
+                      <span className="sm:hidden">Transcript</span>
+                    </button>
+                  )}
+                </div>
+             </div>
+
+             {/* Tabs Navigation */}
+             <div className="flex border-b border-slate-200">
+               <button
+                 onClick={() => setActiveTab('study_guide')}
+                 className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                   activeTab === 'study_guide' 
+                     ? 'border-primary-600 text-primary-700' 
+                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                 }`}
+               >
+                 <Icons.BookOpen size={18} />
+                 Study Guide
+               </button>
+               <button
+                 onClick={() => setActiveTab('transcript')}
+                 className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                   activeTab === 'transcript' 
+                     ? 'border-primary-600 text-primary-700' 
+                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                 }`}
+               >
+                 <Icons.FileText size={18} />
+                 Raw Transcript
+               </button>
+               <button
+                 onClick={() => setActiveTab('chat')}
+                 className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors flex items-center gap-2 ${
+                   activeTab === 'chat' 
+                     ? 'border-primary-600 text-primary-700' 
+                     : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+                 }`}
+               >
+                 <Icons.Mic size={18} />
+                 Chat with Tutor
+               </button>
+             </div>
+
+            {/* Tab Content */}
+            {activeTab === 'study_guide' && (
+              <StudyGuide content={result.studyGuide} />
+            )}
+            
+            {activeTab === 'transcript' && (
+              <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:p-8">
+                 <h3 className="text-lg font-bold text-slate-800 mb-4 font-serif">Verbatim Audio Transcript</h3>
+                 <div className="prose prose-slate max-w-none text-slate-600 whitespace-pre-wrap font-mono text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
+                   {result.transcript}
+                 </div>
+              </div>
+            )}
+            
+            {activeTab === 'chat' && (
+              <ChatInterface 
+                chatSession={chatSessionRef.current} 
+                initialMessages={chatMessages}
+                onHistoryUpdate={setChatMessages}
+              />
+            )}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};
+
+export default App;
