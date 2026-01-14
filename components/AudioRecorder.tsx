@@ -28,13 +28,30 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
   const startTimeRef = useRef<number>(0);
   const streamRef = useRef<MediaStream | null>(null);
 
+  // Visualizer Refs
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationFrameRef = useRef<number>(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const amplitudeHistoryRef = useRef<number[]>([]);
+
   const ua = navigator.userAgent.toLowerCase();
   const isIOS = /iphone|ipad|ipod/.test(ua);
+  const isSafari = ua.includes('safari') && !ua.includes('chrome') && !ua.includes('crios');
+
+  const isSystemAudioSupported = !isIOS && !isSafari;
 
   useEffect(() => {
     loadAudioDevices();
     return () => cleanup();
   }, []);
+
+  useEffect(() => {
+    if (isRecording && streamRef.current && canvasRef.current) {
+      // Clear previous history when starting new recording visualizer
+      amplitudeHistoryRef.current = [];
+      setupVisualizer(streamRef.current, canvasRef.current);
+    }
+  }, [isRecording]);
 
   const loadAudioDevices = async () => {
     try {
@@ -54,6 +71,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
 
   const cleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+    
+    if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+      audioContextRef.current.close();
+    }
+    
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
@@ -68,6 +91,88 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
     return ''; 
   };
 
+  const setupVisualizer = (stream: MediaStream, canvas: HTMLCanvasElement) => {
+    try {
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const analyser = audioCtx.createAnalyser();
+      const source = audioCtx.createMediaStreamSource(stream);
+
+      source.connect(analyser);
+      analyser.fftSize = 2048; // Large FFT for better time domain resolution
+      
+      audioContextRef.current = audioCtx;
+      
+      const bufferLength = analyser.frequencyBinCount;
+      const dataArray = new Uint8Array(bufferLength);
+      
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const draw = () => {
+        animationFrameRef.current = requestAnimationFrame(draw);
+        
+        // Get Time Domain Data (Waveform)
+        analyser.getByteTimeDomainData(dataArray);
+
+        // Calculate RMS (Volume) for this frame
+        let sum = 0;
+        for (let i = 0; i < bufferLength; i++) {
+            const x = (dataArray[i] - 128) / 128.0; // Normalize -1 to 1
+            sum += x * x;
+        }
+        const rms = Math.sqrt(sum / bufferLength);
+        
+        // Push simplified amplitude to history
+        // Sensitivity factor to make waveform look good
+        const amp = Math.min(1, rms * 5); 
+        amplitudeHistoryRef.current.push(amp);
+
+        // Rendering Logic: Squeeze Effect
+        const width = canvas.width;
+        const height = canvas.height;
+        const history = amplitudeHistoryRef.current;
+        const count = history.length;
+        
+        ctx.clearRect(0, 0, width, height);
+        ctx.fillStyle = '#ef4444'; // Red-500
+
+        // Configuration
+        const baseBarWidth = 4;
+        const baseGap = 1;
+        
+        // Determine Scaling
+        // If items * baseWidth > canvasWidth, we scale down to fit
+        const totalNeededWidth = count * (baseBarWidth + baseGap);
+        const scale = totalNeededWidth > width ? width / totalNeededWidth : 1;
+        
+        const currentBarWidth = Math.max(0.5, baseBarWidth * scale);
+        const currentGap = baseGap * scale;
+        
+        // Center alignment logic if not filling screen yet
+        let startX = 0;
+        if (totalNeededWidth < width) {
+            startX = (width - totalNeededWidth) / 2;
+        }
+
+        for(let i = 0; i < count; i++) {
+            const h = Math.max(2, history[i] * height * 0.9);
+            const x = startX + i * (currentBarWidth + currentGap);
+            const y = (height - h) / 2;
+            
+            ctx.fillRect(x, y, currentBarWidth, h);
+        }
+      };
+
+      draw();
+    } catch (e) {
+      console.warn("Visualizer setup failed:", e);
+    }
+  };
+
   const startRecording = async (source: AudioSource) => {
     setError(null);
     setIsPreparing(true);
@@ -77,27 +182,22 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
       let stream: MediaStream;
 
       if (source === 'system') {
-        // Double check for iOS here just in case
-        if (isIOS) {
-          throw new Error("System audio capture is not supported on iOS.");
+        if (!isSystemAudioSupported) {
+          throw new Error("System audio capture is not supported on this browser.");
         }
 
         const getDisplayMedia = 
           (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia?.bind(navigator.mediaDevices)) ||
           (navigator as any).getDisplayMedia?.bind(navigator);
 
-        if (!getDisplayMedia) {
-          throw new Error("Your browser does not support system audio capture.");
-        }
-
         try {
           stream = await getDisplayMedia({
-            video: true,
+            video: true, 
             audio: {
               echoCancellation: false,
               noiseSuppression: false,
-              autoGainControl: false
-            } as any
+              autoGainControl: false,
+            }
           });
         } catch (err: any) {
           setIsPreparing(false);
@@ -106,18 +206,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
           return;
         }
 
-        const audioTracks = stream.getAudioTracks();
-        if (audioTracks.length === 0) {
-          setError("No audio tracks found. Ensure you checked 'Share system audio'.");
-          stream.getTracks().forEach(t => t.stop());
-          setIsPreparing(false);
-          return;
-        }
-
         streamRef.current = stream; 
-        const audioOnlyStream = new MediaStream(audioTracks);
+        const audioTracks = stream.getAudioTracks();
+        const streamToRecord = audioTracks.length > 0 ? new MediaStream(audioTracks) : stream;
         const mimeType = getSupportedMimeType();
-        mediaRecorderRef.current = new MediaRecorder(audioOnlyStream, { mimeType: mimeType || undefined });
+        
+        mediaRecorderRef.current = new MediaRecorder(streamToRecord, { mimeType: mimeType || undefined });
 
       } else {
         const constraints = {
@@ -154,9 +248,10 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
         cleanup();
       };
 
-      mediaRecorderRef.current.start(1000);
+      mediaRecorderRef.current.start(1000); // chunk every 1s
       setIsRecording(true);
       setIsPreparing(false);
+      
       startTimeRef.current = Date.now();
       setDuration(0);
       timerRef.current = window.setInterval(() => {
@@ -185,23 +280,40 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
 
   if (isRecording) {
     return (
-      <div className="w-full h-full flex flex-col items-center justify-center border-2 border-red-200 bg-red-50 rounded-[1.5rem] p-8 animate-pulse-slow">
-        <div className="relative mb-6">
-          <div className="absolute inset-0 bg-red-400 rounded-full animate-ping opacity-20"></div>
-          <button onClick={stopRecording} className="relative z-10 bg-red-500 text-white p-6 rounded-full shadow-xl hover:bg-red-600 transition-all hover:scale-105 active:scale-95">
-            <Icons.Square size={32} fill="currentColor" />
-          </button>
+      <div className="w-full h-full flex flex-col items-center justify-center border-2 border-red-200 bg-white rounded-[1.5rem] p-6 relative overflow-hidden shadow-sm">
+        
+        <div className="relative z-10 w-full flex flex-col items-center">
+            {/* Pulsing indicator with Clean Red Theme */}
+            <div className="relative mb-6 group cursor-pointer" onClick={stopRecording}>
+                <div className="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-75"></div>
+                <div className="relative z-10 bg-red-500 text-white p-6 rounded-full shadow-lg hover:bg-red-600 transition-all hover:scale-105 active:scale-95 border-4 border-white ring-1 ring-red-100">
+                    <Icons.Square size={32} fill="currentColor" />
+                </div>
+            </div>
+
+            <div className="text-center w-full max-w-[280px]">
+                <p className="text-red-500 font-bold text-lg mb-1 tracking-wide">Recording...</p>
+                <p className="text-3xl font-mono font-bold text-slate-800 mb-6 tracking-wider">{formatTime(duration)}</p>
+                
+                {/* Visualizer Canvas - Clean White Theme */}
+                <div className="h-16 w-full mb-6 bg-transparent relative">
+                     <canvas 
+                        ref={canvasRef} 
+                        width={560} // Double res for retina 
+                        height={128} 
+                        className="w-full h-full"
+                     />
+                </div>
+
+                <p className="text-xs text-slate-400 font-medium uppercase tracking-wide">
+                    {audioSource === 'system' ? 'System Audio' : 'Microphone Input'}
+                </p>
+            </div>
+
+            <button onClick={stopRecording} className="mt-8 text-sm font-semibold text-red-600 bg-red-50 hover:bg-red-100 px-6 py-2.5 rounded-full border border-red-100 transition-all">
+                Stop & Process
+            </button>
         </div>
-        <div className="text-center">
-          <p className="text-red-600 font-bold text-lg mb-1">Recording...</p>
-          <p className="text-xs text-red-400 mb-2 font-medium uppercase tracking-wide">
-             {audioSource === 'system' ? 'System Audio' : 'Microphone'}
-          </p>
-          <p className="text-3xl font-mono font-bold text-slate-800">{formatTime(duration)}</p>
-        </div>
-        <button onClick={stopRecording} className="mt-8 text-sm font-semibold text-red-700 bg-red-100 px-6 py-2 rounded-full hover:bg-red-200">
-          Stop & Process
-        </button>
       </div>
     );
   }
@@ -240,37 +352,49 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
               </select>
             </div>
 
-            {/* System Audio Option - Disabled on iOS */}
+            {/* System Audio Option */}
             <button 
-              onClick={() => !isIOS && startRecording('system')} 
-              disabled={isIOS}
-              className={`flex items-center gap-4 p-5 border rounded-2xl transition-all text-left group
-                ${isIOS 
-                  ? 'bg-slate-100 border-slate-200 opacity-60 cursor-not-allowed' 
+              onClick={() => isSystemAudioSupported && startRecording('system')} 
+              disabled={!isSystemAudioSupported}
+              className={`flex flex-col gap-3 p-5 border rounded-2xl transition-all text-left group h-full
+                ${!isSystemAudioSupported 
+                  ? 'bg-slate-100 border-slate-200 opacity-70 cursor-not-allowed' 
                   : 'bg-white border-slate-200 hover:border-primary-500 hover:shadow-md cursor-pointer'
                 }
               `}
             >
-              <div className={`p-3 rounded-xl ${isIOS ? 'bg-slate-200 text-slate-400' : 'bg-primary-100 text-primary-600'}`}>
-                <Icons.FileAudio size={24} />
-              </div>
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <h4 className={`font-bold ${isIOS ? 'text-slate-500' : 'text-slate-800'}`}>
-                    {isIOS ? 'Not Supported on iOS' : 'Direct System Audio'}
-                  </h4>
+              <div className="flex items-start gap-4">
+                <div className={`p-3 rounded-xl ${!isSystemAudioSupported ? 'bg-slate-200 text-slate-400' : 'bg-primary-100 text-primary-600'}`}>
+                  <Icons.FileAudio size={24} />
                 </div>
-                <p className="text-xs text-slate-500">
-                  {isIOS ? 'Apple blocks in-browser system audio.' : 'Works best on Laptop/Chrome.'}
-                </p>
+                <div className="flex-1">
+                  <div className="flex items-center justify-between">
+                    <h4 className={`font-bold ${!isSystemAudioSupported ? 'text-slate-500' : 'text-slate-800'}`}>
+                      {isIOS ? 'Not Supported on Mobile' : isSafari ? 'Not Supported on Safari' : 'System Audio'}
+                    </h4>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {isIOS 
+                      ? 'Use Chrome on Desktop.' 
+                      : isSafari
+                         ? 'Audio capture is restricted. Please use Google Chrome.'
+                         : 'Records internal audio from apps or meetings.'}
+                  </p>
+                </div>
               </div>
+
+              {/* Only show guidance if supported (Not Safari/iOS) */}
+              {isSystemAudioSupported && (
+                <div className="w-full mt-1 bg-amber-50 border border-amber-100 rounded-lg p-2.5">
+                   <div className="flex gap-2 items-start">
+                     <Icons.AlertCircle size={14} className="text-amber-600 mt-0.5 shrink-0" />
+                     <div className="text-[11px] leading-relaxed text-amber-800">
+                        <span className="font-bold">Recommended:</span> Select <strong>"Entire Screen"</strong>.
+                     </div>
+                   </div>
+                </div>
+              )}
             </button>
-            
-            {isIOS && (
-               <div className="bg-blue-50 text-blue-800 p-3 rounded-xl text-[10px] border border-blue-100 mt-2">
-                 <strong>iOS Workaround:</strong> Use <strong>Microphone</strong> mode above, OR record your screen to a video file in Control Center, then select <strong>Upload</strong> on the main menu.
-               </div>
-            )}
           </div>
         )}
       </div>

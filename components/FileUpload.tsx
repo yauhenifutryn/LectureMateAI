@@ -35,8 +35,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
        const name = file.name.toLowerCase();
        
        if (accept === "audio/*") {
-         // Robust check: Accept MIME types starting with audio/video OR specific extensions
-         // This handles cases where OS/Browser fails to detect MIME type for MP3s
          if (
            type.startsWith("audio/") || 
            type.startsWith("video/") || 
@@ -60,7 +58,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
          continue; 
        }
 
-       // 2GB limit to support large video files
        if (file.size > 2 * 1024 * 1024 * 1024) {
          setError(`File too large: ${file.name} (Max 2GB).`);
          continue;
@@ -106,7 +103,6 @@ const FileUpload: React.FC<FileUploadProps> = ({
     if (e.target.files && e.target.files.length > 0) processFiles(e.target.files);
   };
 
-  // Construct a comprehensive accept string to force the OS file picker to show these files
   const fileInputAccept = accept === "audio/*" 
     ? "audio/*,video/*,.mp3,.wav,.m4a,.aac,.mp4,.mov,.mkv,.webm" 
     : accept;
@@ -130,13 +126,13 @@ const FileUpload: React.FC<FileUploadProps> = ({
           disabled={disabled}
         />
         
-        <div className="flex flex-col items-center justify-center space-y-4">
+        <div className="flex flex-col items-center justify-center space-y-4 text-center mx-auto max-w-xs">
           <div className="p-4 rounded-full bg-slate-100 text-slate-400 group-hover:bg-primary-50 group-hover:text-primary-500 transition-colors">
             {icon || <Icons.UploadCloud size={28} />}
           </div>
-          <div className="space-y-1">
-            <h3 className="text-base font-semibold text-slate-700">{label}</h3>
-            <p className="text-xs text-slate-500 font-medium">{subLabel}</p>
+          <div className="space-y-1 text-center w-full">
+            <h3 className="text-base font-semibold text-slate-700 text-center">{label}</h3>
+            <p className="text-xs text-slate-500 font-medium text-center">{subLabel}</p>
           </div>
         </div>
       </div>

@@ -7,6 +7,7 @@ import AudioRecorder from './components/AudioRecorder';
 import ProcessingState from './components/ProcessingState';
 import StudyGuide from './components/StudyGuide';
 import ChatInterface from './components/ChatInterface';
+import AudioPlayer from './components/AudioPlayer';
 import { Icons } from './components/Icon';
 
 type AudioInputMode = 'upload' | 'record';
@@ -34,7 +35,7 @@ const App: React.FC = () => {
 
   // UI State
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  
+
   // 1. Safety: Prevent accidental reloads
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -61,8 +62,6 @@ const App: React.FC = () => {
           console.log("Restoring session from backup");
           setResult(parsed.result);
           setStatus(AppStatus.COMPLETED);
-          // Note: We don't restore Chat Session history automatically to save complexity with SDK hydration,
-          // but we could if we re-initialized the session with history.
         }
       } catch (e) {
         console.error("Failed to restore backup:", e);
@@ -71,7 +70,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // 3. Backup: Save Study Guide to LocalStorage whenever it changes
+  // 3. Backup: Save Study Guide to LocalStorage
   useEffect(() => {
     if (result) {
       try {
@@ -80,16 +79,15 @@ const App: React.FC = () => {
           timestamp: Date.now()
         }));
       } catch (e) {
-        console.error("Failed to save backup to localStorage (quota exceeded?)", e);
+        console.error("Failed to save backup", e);
       }
     }
   }, [result]);
 
-  // Initialize Chat Session when result is available and tab is switched to chat
+  // 4. Initialize Chat Session
   useEffect(() => {
     if (result && !chatSessionRef.current) {
       try {
-        console.log("Initializing Chat Session...");
         chatSessionRef.current = initializeChatSession(result.transcript, result.studyGuide);
       } catch (e) {
         console.error("Failed to init chat", e);
@@ -130,25 +128,13 @@ const App: React.FC = () => {
 
     try {
       setStatus(AppStatus.UPLOADING);
-      console.log("Starting Analysis...");
-      
       const slides = slideFiles.map(s => s.file);
-      
       setStatus(AppStatus.PROCESSING);
-      
-      const analysis = await analyzeAudioLecture(
-        audioFile.file, 
-        slides, 
-        userContext
-      );
-      
+      const analysis = await analyzeAudioLecture(audioFile.file, slides, userContext);
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
-      
-      // Reset Chat
       setChatMessages([]);
-      chatSessionRef.current = null; // Will be re-created by useEffect
-
+      chatSessionRef.current = null; 
     } catch (err: any) {
       console.error(err);
       setError(err.message || "An unexpected error occurred during analysis.");
@@ -159,14 +145,10 @@ const App: React.FC = () => {
   const handleCancelProcessing = () => {
     if (window.confirm("Stop processing? The current analysis will be lost.")) {
       setStatus(AppStatus.IDLE);
-      console.log("User cancelled processing.");
     }
   };
 
-  // Replaces window.confirm with internal state for reliability
-  const handleResetClick = () => {
-    setShowResetConfirm(true);
-  };
+  const handleResetClick = () => setShowResetConfirm(true);
 
   const handleConfirmReset = () => {
     setAudioFile(null);
@@ -182,9 +164,7 @@ const App: React.FC = () => {
     setShowResetConfirm(false);
   };
 
-  const handleCancelReset = () => {
-    setShowResetConfirm(false);
-  };
+  const handleCancelReset = () => setShowResetConfirm(false);
 
   const handleDownloadMarkdown = () => {
     if (!result) return;
@@ -230,7 +210,7 @@ const App: React.FC = () => {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 md:mt-12">
-        {/* Intro Section */}
+        {/* Intro */}
         {status === AppStatus.IDLE && (
           <div className="text-center mb-8 md:mb-10">
             <h2 className="text-3xl md:text-4xl font-serif font-bold text-slate-900 mb-3 md:mb-4">
@@ -242,7 +222,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* Error Message */}
+        {/* Error */}
         {status === AppStatus.ERROR && (
           <div className="max-w-2xl mx-auto mb-8 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
             <div className="flex items-center space-x-3 text-red-700">
@@ -262,7 +242,7 @@ const App: React.FC = () => {
         {status === AppStatus.IDLE && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 animate-fade-in items-stretch">
             
-            {/* 1. Audio Source (Required) */}
+            {/* 1. Audio Source */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
@@ -312,24 +292,14 @@ const App: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <a 
-                            href={audioFile.previewUrl} 
-                            download={audioFile.file.name}
-                            className="p-2 text-slate-400 hover:text-primary-600 hover:bg-slate-50 rounded-lg transition-colors"
-                          >
-                            <Icons.Download size={18} />
-                          </a>
                           <button onClick={() => setAudioFile(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                             <Icons.X size={18} />
                           </button>
                         </div>
                      </div>
-                     <video 
-                       key={audioFile.previewUrl} 
-                       src={audioFile.previewUrl} 
-                       controls 
-                       className="w-full max-h-[300px] rounded-lg bg-black" 
-                     />
+                     
+                     {/* New Audio Player Component */}
+                     <AudioPlayer file={audioFile.file} previewUrl={audioFile.previewUrl} />
                   </div>
                 )}
               </div>
@@ -494,7 +464,7 @@ const App: React.FC = () => {
                 </div>
              </div>
 
-             {/* Tabs Navigation */}
+             {/* Tabs */}
              <div className="flex border-b border-slate-200">
                <button
                  onClick={() => setActiveTab('study_guide')}

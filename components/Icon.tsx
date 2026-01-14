@@ -12,7 +12,9 @@ import {
   Mic,
   Square,
   Copy,
-  Check
+  Check,
+  Play,
+  Pause
 } from 'lucide-react';
 
 export const Icons = {
@@ -28,5 +30,7 @@ export const Icons = {
   Mic,
   Square,
   Copy,
-  Check
+  Check,
+  Play,
+  Pause
 };
