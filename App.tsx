@@ -128,8 +128,13 @@ const App: React.FC = () => {
     try {
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
-      setStatus(AppStatus.PROCESSING);
-      const analysis = await analyzeAudioLecture(audioFile.file, slides, userContext);
+      const analysis = await analyzeAudioLecture(audioFile.file, slides, userContext, {
+        onStageChange: (stage) => {
+          if (stage === 'processing') {
+            setStatus(AppStatus.PROCESSING);
+          }
+        }
+      });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
       setChatMessages([]);

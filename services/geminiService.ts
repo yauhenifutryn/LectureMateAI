@@ -41,6 +41,36 @@ const uploadToBlob = async (file: File): Promise<UploadedFile> => {
   return { fileUrl: blob.url, mimeType: getMimeType(file) };
 };
 
+type AnalyzeStage = 'uploading' | 'processing';
+
+type AnalyzeOptions = {
+  onStageChange?: (stage: AnalyzeStage) => void;
+};
+
+type AnalyzeDependencies = {
+  uploadToBlob: (file: File) => Promise<UploadedFile>;
+  processRequest: (payload: { audio: UploadedFile; slides: UploadedFile[]; userContext: string }) => Promise<ProcessResponse>;
+};
+
+const processRequest = async (payload: {
+  audio: UploadedFile;
+  slides: UploadedFile[];
+  userContext: string;
+}): Promise<ProcessResponse> => {
+  const response = await fetch('/api/process', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+
+  const data = (await response.json()) as ProcessResponse;
+  if (!response.ok && !data.error) {
+    return { error: { message: 'Processing failed.' } };
+  }
+
+  return data;
+};
+
 /**
  * Parses the raw plain text response using the strict separators.
  */
@@ -74,39 +104,44 @@ export function parseResponseText(text: string): { studyGuide: string; transcrip
   return { studyGuide, transcript };
 }
 
-export const analyzeAudioLecture = async (
-  audioFile: File,
-  slideFiles: File[],
-  userContext: string
-): Promise<{ studyGuide: string; transcript: string }> => {
-  if (!audioFile) {
-    throw new Error('Audio file is missing.');
-  }
+export const createAnalyzeAudioLecture =
+  ({ uploadToBlob: uploadFn, processRequest: processFn }: AnalyzeDependencies) =>
+  async (
+    audioFile: File,
+    slideFiles: File[],
+    userContext: string,
+    options?: AnalyzeOptions
+  ): Promise<{ studyGuide: string; transcript: string }> => {
+    if (!audioFile) {
+      throw new Error('Audio file is missing.');
+    }
 
-  const audio = await uploadToBlob(audioFile);
-  const slides = await Promise.all(slideFiles.map((file) => uploadToBlob(file)));
+    options?.onStageChange?.('uploading');
+    const audio = await uploadFn(audioFile);
+    const slides = await Promise.all(slideFiles.map((file) => uploadFn(file)));
 
-  const response = await fetch('/api/process', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    options?.onStageChange?.('processing');
+    const data = await processFn({
       audio,
       slides,
       userContext
-    })
-  });
+    });
 
-  const data = (await response.json()) as ProcessResponse;
-  if (!response.ok || data.error) {
-    throw new Error(data.error?.message || 'Processing failed.');
-  }
+    if (data.error) {
+      throw new Error(data.error.message || 'Processing failed.');
+    }
 
-  if (!data.text) {
-    throw new Error('Empty response from processing endpoint.');
-  }
+    if (!data.text) {
+      throw new Error('Empty response from processing endpoint.');
+    }
 
-  return parseResponseText(data.text);
-};
+    return parseResponseText(data.text);
+  };
+
+export const analyzeAudioLecture = createAnalyzeAudioLecture({
+  uploadToBlob,
+  processRequest
+});
 
 export const initializeChatSession = (
   transcript: string,
