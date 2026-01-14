@@ -1,4 +1,4 @@
-import { SYSTEM_INSTRUCTION, CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts';
+import { SYSTEM_INSTRUCTION, CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts.js';
 
 export const PROMPTS = {
   SYSTEM_INSTRUCTIONS: SYSTEM_INSTRUCTION,

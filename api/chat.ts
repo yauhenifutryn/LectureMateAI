@@ -1,8 +1,8 @@
 import 'dotenv/config';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from '@google/genai';
-import { toPublicError } from './_lib/errors';
-import { CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts';
+import { toPublicError } from './_lib/errors.js';
+import { CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts.js';
 
 type ChatMessage = {
   role: 'user' | 'model';

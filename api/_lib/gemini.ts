@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
 import fs from 'fs';
 import path from 'path';
-import { PROMPTS } from '../prompts';
+import { PROMPTS } from '../prompts.js';
 
 export async function generateStudyGuide(
   apiKey: string,

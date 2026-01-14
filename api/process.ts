@@ -1,10 +1,10 @@
 import 'dotenv/config';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { del } from '@vercel/blob';
-import { validateBlobUrl } from './_lib/validateBlobUrl';
-import { toPublicError } from './_lib/errors';
-import { generateStudyGuide } from './_lib/gemini';
-import { SYSTEM_INSTRUCTION } from './_lib/prompts';
+import { validateBlobUrl } from './_lib/validateBlobUrl.js';
+import { toPublicError } from './_lib/errors.js';
+import { generateStudyGuide } from './_lib/gemini.js';
+import { SYSTEM_INSTRUCTION } from './_lib/prompts.js';
 
 export const config = { maxDuration: 60 };
 
