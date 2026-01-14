@@ -15,7 +15,13 @@ View your app in AI Studio: https://ai.studio/apps/drive/1ZgirsHJMb0LX1tvy00zOHd
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Create [.env.local](.env.local) with server-only keys:
+   ```
+   GEMINI_API_KEY=your_gemini_api_key
+   BLOB_READ_WRITE_TOKEN=your_vercel_blob_token
+   BLOB_URL_PREFIX=https://<store>.public.blob.vercel-storage.com/lectures/
+   ```
+   `BLOB_URL_PREFIX` is optional but recommended for stricter validation.
 3. Run the app:
    `npm run dev`
 
