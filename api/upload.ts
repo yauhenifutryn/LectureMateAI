@@ -1,4 +1,5 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 export const config = { runtime: 'nodejs' };
 
@@ -19,21 +20,35 @@ export function buildUploadConfig() {
   };
 }
 
-export default async function handler(request: Request) {
-  const body = (await request.json()) as HandleUploadBody;
+function parseBody(req: VercelRequest): HandleUploadBody {
+  if (!req.body) {
+    throw new Error('Missing upload payload.');
+  }
+  if (typeof req.body === 'string') {
+    return JSON.parse(req.body) as HandleUploadBody;
+  }
+  return req.body as HandleUploadBody;
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method Not Allowed' });
+  }
+
+  const body = parseBody(req);
   const { allowedContentTypes, maxFileSize } = buildUploadConfig();
 
   try {
     const jsonResponse = await handleUpload({
       body,
-      request,
+      request: req,
       onBeforeGenerateToken: async (pathname) => {
         if (!pathname.startsWith('lectures/')) {
           throw new Error('Invalid upload path.');
         }
         return {
           allowedContentTypes,
-          maximumSize: maxFileSize,
+          maximumSizeInBytes: maxFileSize,
           tokenPayload: JSON.stringify({ scope: 'lecture-upload' })
         };
       },
@@ -42,14 +57,8 @@ export default async function handler(request: Request) {
       }
     });
 
-    return new Response(JSON.stringify(jsonResponse), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return res.status(200).json(jsonResponse);
   } catch (error) {
-    return new Response(JSON.stringify({ error: (error as Error).message }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return res.status(400).json({ error: (error as Error).message });
   }
 }
