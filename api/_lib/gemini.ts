@@ -12,6 +12,20 @@ type UploadInput = {
   displayName: string;
 };
 
+type FilePartInput = {
+  uri: string;
+  mimeType: string;
+};
+
+export function buildUserParts(files: FilePartInput[], promptText: string) {
+  const parts = files.map((file) => ({
+    fileData: { fileUri: file.uri, mimeType: file.mimeType }
+  }));
+
+  parts.push({ text: promptText });
+  return parts;
+}
+
 export async function uploadAndGenerate({
   apiKey,
   systemInstruction,
@@ -40,15 +54,14 @@ export async function uploadAndGenerate({
       });
     }
 
-    const parts = uploaded.map((file) => ({
-      fileData: { fileUri: file.uri, mimeType: file.mimeType }
-    }));
-
-    parts.push({ text: promptText });
+    const parts = buildUserParts(
+      uploaded.map((file) => ({ uri: file.uri, mimeType: file.mimeType })),
+      promptText
+    );
 
     const stream = await ai.models.generateContentStream({
       model: 'gemini-3-flash-preview',
-      contents: { parts },
+      contents: [{ role: 'user', parts }],
       config: { systemInstruction, temperature: 0.2 }
     });
 

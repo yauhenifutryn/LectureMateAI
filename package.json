@@ -19,6 +19,7 @@
     "react-markdown": "^10.1.0"
   },
   "devDependencies": {
+    "@vercel/node": "^3.2.20",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",

@@ -1,6 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 
-export const config = { runtime: 'edge' };
+export const config = { runtime: 'nodejs' };
 
 export function buildUploadConfig() {
   return {
