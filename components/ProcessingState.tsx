@@ -6,7 +6,7 @@ interface ProcessingStateProps {
 }
 
 const MESSAGES = [
-  "Uploading audio & slides to Gemini...",
+  "Uploading audio & slides for analysis...",
   "Transcribing 50+ minutes of audio...",
   "Reading slide content...",
   "Connecting concepts to timestamps...",
