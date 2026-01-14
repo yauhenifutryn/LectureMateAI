@@ -25,3 +25,11 @@ export interface ChatMessage {
   id: string;
   isStreaming?: boolean;
 }
+
+export interface ChatStreamChunk {
+  text?: string;
+}
+
+export interface ChatSession {
+  sendMessageStream: (input: { message: string; history: ChatMessage[] }) => AsyncIterable<ChatStreamChunk>;
+}

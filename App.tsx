@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppStatus, FileData, AnalysisResult, ChatMessage } from './types';
+import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession } from './types';
 import { analyzeAudioLecture, initializeChatSession } from './services/geminiService';
-import { Chat } from '@google/genai';
 import FileUpload from './components/FileUpload';
 import AudioRecorder from './components/AudioRecorder';
 import ProcessingState from './components/ProcessingState';
@@ -31,7 +30,7 @@ const App: React.FC = () => {
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const chatSessionRef = useRef<Chat | null>(null);
+  const chatSessionRef = useRef<ChatSession | null>(null);
 
   // UI State
   const [showResetConfirm, setShowResetConfirm] = useState(false);

@@ -1,11 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Icons } from './Icon';
-import { ChatMessage } from '../types';
-import { Chat } from '@google/genai';
+import { ChatMessage, ChatSession } from '../types';
 
 interface ChatInterfaceProps {
-  chatSession: Chat | null;
+  chatSession: ChatSession | null;
   initialMessages: ChatMessage[];
   onHistoryUpdate: (msgs: ChatMessage[]) => void;
 }
@@ -54,7 +53,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatSession, initialMessa
       setMessages(prev => [...prev, botMsg]);
 
       // Stream response
-      const result = await chatSession.sendMessageStream({ message: userMsg.content });
+      const result = await chatSession.sendMessageStream({ message: userMsg.content, history: newHistory });
       
       let fullContent = '';
       for await (const chunk of result) {
