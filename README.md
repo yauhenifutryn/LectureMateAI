@@ -1,13 +1,3 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
-
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/drive/1ZgirsHJMb0LX1tvy00zOHdd-DZ5_Q-KR
-
 ## Run Locally
 
 **Prerequisites:**  Node.js
@@ -43,14 +33,12 @@ If you need to record a live Zoom/Teams meeting directly from the browser:
 
 ---
 
-## ⚖️ License & Commercial Disclaimer
+## License & Commercial Disclaimer
 
-**© 2025 [Your Name]. All Rights Reserved.**
+**© 2026 Yauheni Futryn. All Rights Reserved.**
 
-### 🛑 Demo & Educational Use Only
+### Demo & Educational Use Only
 This source code and application are provided strictly for **demonstration, portfolio, and educational purposes**.
 
 * **No Commercial Use:** You are **not** permitted to sell, sub-license, rent, or monetize this software, its source code, or its outputs without explicit written consent from the author.
-* **No Redistribution:** You may not repackage this repository as a white-label solution for third parties without a commercial license agreement.
-
-For commercial licensing inquiries or White Label partnership opportunities, please contact the author directly.
+* **No Redistribution:** inquiries or White Label partnership opportunities, please contact the author directly.
