@@ -3,7 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { del } from '@vercel/blob';
 import { validateBlobUrl } from './_lib/validateBlobUrl';
 import { toPublicError } from './_lib/errors';
-import { uploadAndGenerate } from './_lib/gemini';
+import { generateStudyGuide } from './_lib/gemini';
 import { SYSTEM_INSTRUCTION } from './_lib/prompts';
 
 export const config = { maxDuration: 60 };
@@ -50,33 +50,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       throw new Error('Missing audio payload.');
     }
 
-    const allFiles = [audio, ...slides];
-    const downloads = await Promise.all(
-      allFiles.map(async (file, index) => {
-        validateBlobUrl(file.fileUrl, blobPrefix);
-        blobUrls.push(file.fileUrl);
-        const response = await fetch(file.fileUrl);
-        if (!response.ok) {
-          throw new Error('Blob download failed.');
-        }
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const displayName = index === 0 ? 'lecture-audio' : `lecture-slide-${index}`;
-        return { buffer, mimeType: file.mimeType, displayName };
-      })
-    );
+    validateBlobUrl(audio.fileUrl, blobPrefix);
+    blobUrls.push(audio.fileUrl);
 
-    const promptText = `I have attached ${
-      slides.length > 0
-        ? `${slides.length} lecture slide file(s) and the lecture audio.`
-        : 'the lecture audio.'
-    }\n\nStudent\'s Additional Context:\n${userContext || 'None provided.'}\n\nGenerate the output using the strict separators defined in the System Instructions.`;
-
-    const { fullText } = await uploadAndGenerate({
-      apiKey,
-      systemInstruction: SYSTEM_INSTRUCTION,
-      promptText,
-      files: downloads
+    slides.forEach((slide) => {
+      validateBlobUrl(slide.fileUrl, blobPrefix);
+      blobUrls.push(slide.fileUrl);
     });
+
+    const promptText = `${SYSTEM_INSTRUCTION}\n\nStudent's Additional Context:\n${
+      userContext || 'None provided.'
+    }\n\nGenerate the output using the strict separators defined in the System Instructions.`;
+
+    const fullText = await generateStudyGuide(
+      apiKey,
+      audio.fileUrl,
+      audio.mimeType,
+      promptText
+    );
 
     return res.status(200).json({ text: fullText });
   } catch (error) {

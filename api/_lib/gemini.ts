@@ -2,111 +2,66 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
 import fs from 'fs';
 import path from 'path';
-import { SYSTEM_INSTRUCTION } from './prompts';
+import { PROMPTS } from '../prompts';
 
-type UploadedFile = {
-  name: string;
-  uri: string;
-  mimeType: string;
-  tempPath: string;
-};
-
-type UploadInput = {
-  buffer: Buffer;
-  mimeType: string;
-  displayName: string;
-};
-
-type FilePartInput = {
-  uri: string;
-  mimeType: string;
-};
-
-export function buildGenerateParts(files: FilePartInput[], promptText: string) {
-  const parts = files.map((file) => ({
-    fileData: { mimeType: file.mimeType, fileUri: file.uri }
-  }));
-
-  parts.push({ text: promptText });
-  return parts;
-}
-
-const getExtension = (mimeType: string) => {
-  const parts = mimeType.split('/');
-  return parts.length > 1 ? parts[1] : 'bin';
-};
-
-export async function uploadAndGenerate({
-  apiKey,
-  systemInstruction,
-  promptText,
-  files
-}: {
-  apiKey: string;
-  systemInstruction: string;
-  promptText: string;
-  files: UploadInput[];
-}) {
+export async function generateStudyGuide(
+  apiKey: string,
+  fileUrl: string,
+  mimeType: string,
+  userContext?: string
+) {
   const fileManager = new GoogleAIFileManager(apiKey);
   const genAI = new GoogleGenerativeAI(apiKey);
-  const uploaded: UploadedFile[] = [];
+
+  const response = await fetch(fileUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file: ${response.statusText}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  const ext = mimeType?.split('/')[1] || 'bin';
+  const tempFilePath = path.join('/tmp', `upload-${Date.now()}.${ext}`);
+  fs.writeFileSync(tempFilePath, buffer);
+
+  let uploadResult: Awaited<ReturnType<typeof fileManager.uploadFile>> | undefined;
 
   try {
-    for (const [index, file] of files.entries()) {
-      const ext = getExtension(file.mimeType);
-      const tempFilePath = path.join('/tmp', `upload-${Date.now()}-${index}.${ext}`);
-      fs.writeFileSync(tempFilePath, file.buffer);
-
-      const uploadResult = await fileManager.uploadFile(tempFilePath, {
-        mimeType: file.mimeType,
-        displayName: file.displayName
-      });
-
-      let remoteFile = await fileManager.getFile(uploadResult.file.name);
-      while (remoteFile.state === 'PROCESSING') {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        remoteFile = await fileManager.getFile(uploadResult.file.name);
-      }
-
-      if (remoteFile.state === 'FAILED') {
-        throw new Error('Gemini file processing failed.');
-      }
-
-      uploaded.push({
-        name: uploadResult.file.name,
-        uri: uploadResult.file.uri,
-        mimeType: uploadResult.file.mimeType,
-        tempPath: tempFilePath
-      });
-    }
-
-    const model = genAI.getGenerativeModel({
-      model: 'gemini-2.0-flash-exp',
-      systemInstruction: systemInstruction || SYSTEM_INSTRUCTION
+    uploadResult = await fileManager.uploadFile(tempFilePath, {
+      mimeType,
+      displayName: 'Lecture Audio'
     });
 
-    const parts = buildGenerateParts(
-      uploaded.map((file) => ({ uri: file.uri, mimeType: file.mimeType })),
-      promptText || SYSTEM_INSTRUCTION
-    );
+    let file = await fileManager.getFile(uploadResult.file.name);
+    while (file.state === 'PROCESSING') {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      file = await fileManager.getFile(uploadResult.file.name);
+    }
 
-    const result = await model.generateContent(parts);
-    return { fullText: result.response.text(), uploaded };
-  } finally {
-    for (const file of uploaded) {
-      try {
-        await fileManager.deleteFile(file.name);
-      } catch {
-        // Cleanup is best-effort.
-      }
+    if (file.state === 'FAILED') {
+      throw new Error('Gemini audio processing failed.');
+    }
 
-      if (fs.existsSync(file.tempPath)) {
-        try {
-          fs.unlinkSync(file.tempPath);
-        } catch {
-          // Best-effort temp cleanup.
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const result = await model.generateContent([
+      {
+        fileData: {
+          mimeType: uploadResult.file.mimeType,
+          fileUri: uploadResult.file.uri
         }
-      }
+      },
+      { text: userContext || PROMPTS.SYSTEM_INSTRUCTIONS }
+    ]);
+
+    return result.response.text();
+  } finally {
+    if (fs.existsSync(tempFilePath)) {
+      fs.unlinkSync(tempFilePath);
+    }
+
+    if (uploadResult) {
+      await fileManager.deleteFile(uploadResult.file.name).catch(console.error);
     }
   }
 }
