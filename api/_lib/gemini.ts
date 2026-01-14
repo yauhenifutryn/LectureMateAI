@@ -1,9 +1,14 @@
-import { GoogleGenAI } from '@google/genai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleAIFileManager } from '@google/generative-ai/server';
+import fs from 'fs';
+import path from 'path';
+import { SYSTEM_INSTRUCTION } from './prompts';
 
 type UploadedFile = {
   name: string;
   uri: string;
   mimeType: string;
+  tempPath: string;
 };
 
 type UploadInput = {
@@ -17,14 +22,19 @@ type FilePartInput = {
   mimeType: string;
 };
 
-export function buildUserParts(files: FilePartInput[], promptText: string) {
+export function buildGenerateParts(files: FilePartInput[], promptText: string) {
   const parts = files.map((file) => ({
-    fileData: { fileUri: file.uri, mimeType: file.mimeType }
+    fileData: { mimeType: file.mimeType, fileUri: file.uri }
   }));
 
   parts.push({ text: promptText });
   return parts;
 }
+
+const getExtension = (mimeType: string) => {
+  const parts = mimeType.split('/');
+  return parts.length > 1 ? parts[1] : 'bin';
+};
 
 export async function uploadAndGenerate({
   apiKey,
@@ -37,46 +47,65 @@ export async function uploadAndGenerate({
   promptText: string;
   files: UploadInput[];
 }) {
-  const ai = new GoogleGenAI({ apiKey });
+  const fileManager = new GoogleAIFileManager(apiKey);
+  const genAI = new GoogleGenerativeAI(apiKey);
   const uploaded: UploadedFile[] = [];
 
   try {
-    for (const file of files) {
-      const res = await ai.files.upload({
-        file: new Blob([file.buffer], { type: file.mimeType }),
-        config: { displayName: file.displayName, mimeType: file.mimeType }
+    for (const [index, file] of files.entries()) {
+      const ext = getExtension(file.mimeType);
+      const tempFilePath = path.join('/tmp', `upload-${Date.now()}-${index}.${ext}`);
+      fs.writeFileSync(tempFilePath, file.buffer);
+
+      const uploadResult = await fileManager.uploadFile(tempFilePath, {
+        mimeType: file.mimeType,
+        displayName: file.displayName
       });
-      const uploadedFile = (res as any).file || res;
+
+      let remoteFile = await fileManager.getFile(uploadResult.file.name);
+      while (remoteFile.state === 'PROCESSING') {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        remoteFile = await fileManager.getFile(uploadResult.file.name);
+      }
+
+      if (remoteFile.state === 'FAILED') {
+        throw new Error('Gemini file processing failed.');
+      }
+
       uploaded.push({
-        name: uploadedFile.name,
-        uri: uploadedFile.uri,
-        mimeType: uploadedFile.mimeType
+        name: uploadResult.file.name,
+        uri: uploadResult.file.uri,
+        mimeType: uploadResult.file.mimeType,
+        tempPath: tempFilePath
       });
     }
 
-    const parts = buildUserParts(
-      uploaded.map((file) => ({ uri: file.uri, mimeType: file.mimeType })),
-      promptText
-    );
-
-    const stream = await ai.models.generateContentStream({
-      model: 'gemini-3-flash-preview',
-      contents: [{ role: 'user', parts }],
-      config: { systemInstruction, temperature: 0.2 }
+    const model = genAI.getGenerativeModel({
+      model: 'gemini-2.0-flash-exp',
+      systemInstruction: systemInstruction || SYSTEM_INSTRUCTION
     });
 
-    let fullText = '';
-    for await (const chunk of stream) {
-      if (chunk.text) fullText += chunk.text;
-    }
+    const parts = buildGenerateParts(
+      uploaded.map((file) => ({ uri: file.uri, mimeType: file.mimeType })),
+      promptText || SYSTEM_INSTRUCTION
+    );
 
-    return { fullText, uploaded };
+    const result = await model.generateContent(parts);
+    return { fullText: result.response.text(), uploaded };
   } finally {
     for (const file of uploaded) {
       try {
-        await ai.files.delete({ name: file.name });
+        await fileManager.deleteFile(file.name);
       } catch {
         // Cleanup is best-effort.
+      }
+
+      if (fs.existsSync(file.tempPath)) {
+        try {
+          fs.unlinkSync(file.tempPath);
+        } catch {
+          // Best-effort temp cleanup.
+        }
       }
     }
   }

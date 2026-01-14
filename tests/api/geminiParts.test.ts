@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { buildUserParts } from '../../api/_lib/gemini';
+import { buildGenerateParts } from '../../api/_lib/gemini';
 
-describe('buildUserParts', () => {
+describe('buildGenerateParts', () => {
   it('creates separate fileData and text parts', () => {
-    const parts = buildUserParts(
+    const parts = buildGenerateParts(
       [
         { uri: 'file://one', mimeType: 'audio/mpeg' },
         { uri: 'file://two', mimeType: 'application/pdf' }
