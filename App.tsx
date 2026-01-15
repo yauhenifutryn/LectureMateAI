@@ -1,6 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext } from './types';
-import { analyzeAudioLecture, cleanupUploadedFiles, initializeChatSession } from './services/geminiService';
+import {
+  analyzeAudioLectureWithCleanup,
+  cleanupUploadedFiles,
+  initializeChatSession
+} from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import AudioRecorder from './components/AudioRecorder';
 import ProcessingState from './components/ProcessingState';
@@ -173,7 +177,7 @@ const App: React.FC = () => {
     try {
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
-      const analysis = await analyzeAudioLecture(audioFile.file, slides, userContext, {
+      const analysis = await analyzeAudioLectureWithCleanup(audioFile.file, slides, userContext, {
         onStageChange: (stage) => {
           if (stage === 'processing') {
             setStatus(AppStatus.PROCESSING);

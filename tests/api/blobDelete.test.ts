@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import handler from '../../api/blob/delete';
-import { validateDemoCode } from '../../api/_lib/access';
+import { getDemoCodeRemaining } from '../../api/_lib/access';
 import { cleanupBlobUrls } from '../../api/_lib/blobCleanup';
 
 vi.mock('../../api/_lib/blobCleanup', () => ({
@@ -12,7 +12,7 @@ vi.mock('../../api/_lib/access', async () => {
   const actual = await vi.importActual('../../api/_lib/access');
   return {
     ...actual,
-    validateDemoCode: vi.fn()
+    getDemoCodeRemaining: vi.fn()
   };
 });
 
@@ -59,7 +59,7 @@ describe('blob delete endpoint', () => {
   });
 
   it('rejects unauthorized requests', async () => {
-    vi.mocked(validateDemoCode).mockResolvedValue(null);
+    vi.mocked(getDemoCodeRemaining).mockResolvedValue(null);
     const req = createReq({ body: { urls: ['https://demo.blob.vercel-storage.com/a'] } });
     const res = createRes();
 
@@ -69,7 +69,7 @@ describe('blob delete endpoint', () => {
   });
 
   it('allows demo codes and deletes urls', async () => {
-    vi.mocked(validateDemoCode).mockResolvedValue(2);
+    vi.mocked(getDemoCodeRemaining).mockResolvedValue(2);
     const req = createReq({
       body: { urls: ['https://demo.blob.vercel-storage.com/a'], demoCode: 'CODE' }
     });
@@ -81,6 +81,18 @@ describe('blob delete endpoint', () => {
     expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith([
       'https://demo.blob.vercel-storage.com/a'
     ]);
+  });
+
+  it('allows cleanup when demo code is exhausted', async () => {
+    vi.mocked(getDemoCodeRemaining).mockResolvedValue(0);
+    const req = createReq({
+      body: { urls: ['https://demo.blob.vercel-storage.com/a'], demoCode: 'CODE' }
+    });
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
   });
 
   it('allows admin token', async () => {

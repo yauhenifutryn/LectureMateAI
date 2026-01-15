@@ -130,11 +130,16 @@ export async function revokeDemoCode(code: string): Promise<void> {
 }
 
 export async function validateDemoCode(code: string): Promise<number | null> {
+  const remaining = await getDemoCodeRemaining(code);
+  if (remaining === null || remaining <= 0) return null;
+  return remaining;
+}
+
+export async function getDemoCodeRemaining(code: string): Promise<number | null> {
   ensureKvConfigured();
   const normalized = normalizeDemoCode(code);
   const remaining = await kv.get<number>(`${DEMO_PREFIX}${normalized}`);
   if (typeof remaining !== 'number') return null;
-  if (remaining <= 0) return null;
   return remaining;
 }
 

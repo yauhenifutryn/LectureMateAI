@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { AccessError, getAdminToken, validateDemoCode } from '../_lib/access.js';
+import { AccessError, getAdminToken, getDemoCodeRemaining } from '../_lib/access.js';
 import { cleanupBlobUrls } from '../_lib/blobCleanup.js';
 import { validateBlobUrl } from '../_lib/validateBlobUrl.js';
 
@@ -28,7 +28,7 @@ async function authorizeCleanup(req: VercelRequest, demoCode?: string): Promise<
     throw new AccessError('missing_access_code', 'Access code required.', 401);
   }
 
-  const remaining = await validateDemoCode(demoCode);
+  const remaining = await getDemoCodeRemaining(demoCode);
   if (remaining === null) {
     throw new AccessError('invalid_access_code', 'Invalid or exhausted demo code.', 401);
   }

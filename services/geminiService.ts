@@ -57,6 +57,10 @@ type AnalyzeDependencies = {
   ) => Promise<ProcessResponse>;
 };
 
+type CleanupDependencies = AnalyzeDependencies & {
+  cleanupUploadedFiles: (urls: string[], access?: AccessContext) => Promise<void>;
+};
+
 const processRequest = async (
   payload: {
   audio: UploadedFile;
@@ -169,6 +173,36 @@ export const analyzeAudioLecture = createAnalyzeAudioLecture({
   processRequest
 });
 
+export const createRunAnalysisWithCleanup =
+  ({
+    uploadToBlob: uploadFn,
+    processRequest: processFn,
+    cleanupUploadedFiles: cleanupFn
+  }: CleanupDependencies) =>
+  async (
+    audioFile: File,
+    slideFiles: File[],
+    userContext: string,
+    options?: AnalyzeOptions
+  ): Promise<{ studyGuide: string; transcript: string }> => {
+    let uploadedUrls: string[] = [];
+
+    try {
+      const analyze = createAnalyzeAudioLecture({ uploadToBlob: uploadFn, processRequest: processFn });
+      return await analyze(audioFile, slideFiles, userContext, {
+        ...options,
+        onUploadComplete: (urls) => {
+          uploadedUrls = urls;
+          options?.onUploadComplete?.(urls);
+        }
+      });
+    } finally {
+      if (uploadedUrls.length > 0) {
+        await cleanupFn(uploadedUrls, options?.access);
+      }
+    }
+  };
+
 export const cleanupUploadedFiles = async (
   urls: string[],
   access?: AccessContext
@@ -194,6 +228,12 @@ export const cleanupUploadedFiles = async (
     console.error('Failed to cleanup uploads:', error);
   }
 };
+
+export const analyzeAudioLectureWithCleanup = createRunAnalysisWithCleanup({
+  uploadToBlob,
+  processRequest,
+  cleanupUploadedFiles
+});
 
 export const initializeChatSession = (
   transcript: string,
