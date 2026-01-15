@@ -59,6 +59,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [waveformData, setWaveformData] = useState<number[]>([]);
@@ -121,6 +122,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     if (!audio) return;
     resetAudioElement(audio, previewUrl);
     setIsPlaying(false);
+    setIsReady(false);
     setCurrentTime(0);
   }, [previewUrl]);
 
@@ -136,15 +138,26 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
              setDuration(audio.duration);
         }
     };
+    const handleCanPlay = () => setIsReady(true);
+    const handleLoadStart = () => setIsReady(false);
+    const handleError = () => setIsReady(false);
 
     audio.addEventListener('timeupdate', updateTime);
     audio.addEventListener('ended', handleEnded);
     audio.addEventListener('durationchange', handleDurationChange);
+    audio.addEventListener('canplay', handleCanPlay);
+    audio.addEventListener('loadedmetadata', handleCanPlay);
+    audio.addEventListener('loadstart', handleLoadStart);
+    audio.addEventListener('error', handleError);
     
     return () => {
       audio.removeEventListener('timeupdate', updateTime);
       audio.removeEventListener('ended', handleEnded);
       audio.removeEventListener('durationchange', handleDurationChange);
+      audio.removeEventListener('canplay', handleCanPlay);
+      audio.removeEventListener('loadedmetadata', handleCanPlay);
+      audio.removeEventListener('loadstart', handleLoadStart);
+      audio.removeEventListener('error', handleError);
     };
   }, []);
 
@@ -168,7 +181,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       ctx.moveTo(0, height / 2);
       ctx.lineTo(width, height / 2);
       ctx.strokeStyle = '#fecaca';
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 6;
       ctx.lineCap = 'round';
       ctx.stroke();
 
@@ -177,7 +190,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ctx.moveTo(0, height / 2);
         ctx.lineTo(width * progressPercent, height / 2);
       ctx.strokeStyle = '#EE3B30';
-      ctx.lineWidth = 4;
+        ctx.lineWidth = 6;
       ctx.lineCap = 'round';
       ctx.stroke();
       }
@@ -268,7 +281,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         {/* Hidden Audio Element */}
         <audio 
             ref={audioRef} 
-            src={previewUrl} 
+            src={previewUrl}
+            preload="metadata"
         />
         
         <div className="flex items-center gap-4">
@@ -276,7 +290,12 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
              <button 
                 type="button"
                 onClick={togglePlay}
-                className="w-12 h-12 flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-all hover:scale-105 active:scale-95 shrink-0 shadow-sm border border-red-100"
+                disabled={!isReady}
+                className={`w-12 h-12 flex items-center justify-center rounded-full transition-all shrink-0 shadow-sm border ${
+                  isReady
+                    ? 'bg-red-50 text-red-600 hover:bg-red-100 hover:scale-105 active:scale-95 border-red-100'
+                    : 'bg-slate-100 text-slate-300 border-slate-200 cursor-not-allowed'
+                }`}
              >
                  {isPlaying ? <Icons.Pause size={24} fill="currentColor" /> : <Icons.Play size={24} fill="currentColor" className="ml-1" />}
              </button>

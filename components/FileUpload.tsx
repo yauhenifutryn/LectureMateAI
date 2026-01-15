@@ -59,7 +59,7 @@ const FileUpload: React.FC<FileUploadProps> = ({
        }
 
        if (file.size > 2 * 1024 * 1024 * 1024) {
-         setError(`File too large: ${file.name} (Max 2GB).`);
+         setError(`File too large: ${file.name} (Max 2GB). Recommended: < 100 MB.`);
          continue;
        }
 

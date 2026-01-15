@@ -26,4 +26,32 @@ describe('analyzeAudioLecture', () => {
     expect(stages[0]).toBe('uploading');
     expect(stages).toContain('processing');
   });
+
+  it('provides uploaded blob urls for cleanup', async () => {
+    const uploaded: string[] = [];
+    const fakeUpload = async (file: File) => ({
+      fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+      mimeType: 'audio/mpeg'
+    });
+    const fakeProcess = async () => ({
+      text: '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
+    });
+
+    const analyze = createAnalyzeAudioLecture({
+      uploadToBlob: fakeUpload,
+      processRequest: fakeProcess
+    });
+
+    const fakeAudio = { name: 'audio.mp3', type: 'audio/mpeg' } as File;
+    const fakeSlide = { name: 'slide.pdf', type: 'application/pdf' } as File;
+
+    await analyze(fakeAudio, [fakeSlide], 'context', {
+      onUploadComplete: (urls) => uploaded.push(...urls)
+    });
+
+    expect(uploaded).toEqual([
+      'https://public.blob.vercel-storage.com/lectures/audio.mp3',
+      'https://public.blob.vercel-storage.com/lectures/slide.pdf'
+    ]);
+  });
 });

@@ -45,6 +45,7 @@ type AnalyzeStage = 'uploading' | 'processing';
 
 type AnalyzeOptions = {
   onStageChange?: (stage: AnalyzeStage) => void;
+  onUploadComplete?: (urls: string[]) => void;
   access?: AccessContext;
 };
 
@@ -140,6 +141,7 @@ export const createAnalyzeAudioLecture =
     options?.onStageChange?.('uploading');
     const audio = await uploadFn(audioFile);
     const slides = await Promise.all(slideFiles.map((file) => uploadFn(file)));
+    options?.onUploadComplete?.([audio.fileUrl, ...slides.map((slide) => slide.fileUrl)]);
 
     options?.onStageChange?.('processing');
     const data = await processFn(
@@ -166,6 +168,32 @@ export const analyzeAudioLecture = createAnalyzeAudioLecture({
   uploadToBlob,
   processRequest
 });
+
+export const cleanupUploadedFiles = async (
+  urls: string[],
+  access?: AccessContext
+): Promise<void> => {
+  if (!urls || urls.length === 0) return;
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const payload: { urls: string[]; demoCode?: string } = { urls };
+
+  if (access?.mode === 'admin') {
+    headers.Authorization = `Bearer ${access.token}`;
+  } else if (access?.mode === 'demo') {
+    payload.demoCode = access.token;
+  }
+
+  try {
+    await fetch('/api/blob/delete', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload)
+    });
+  } catch (error) {
+    console.error('Failed to cleanup uploads:', error);
+  }
+};
 
 export const initializeChatSession = (
   transcript: string,

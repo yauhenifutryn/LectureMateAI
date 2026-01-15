@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext } from './types';
-import { analyzeAudioLecture, initializeChatSession } from './services/geminiService';
+import { analyzeAudioLecture, cleanupUploadedFiles, initializeChatSession } from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import AudioRecorder from './components/AudioRecorder';
 import ProcessingState from './components/ProcessingState';
@@ -10,12 +10,14 @@ import AudioPlayer from './components/AudioPlayer';
 import { Icons } from './components/Icon';
 import AccessGate from './components/AccessGate';
 import AdminPanel from './components/AdminPanel';
+import { shouldEnableUploadWaveform } from './utils/waveformPolicy';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 
 const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
 const ACCESS_STORAGE_KEY = 'lecturemate_access_v1';
+const UPLOAD_WAVEFORM_LIMIT_BYTES = 100 * 1024 * 1024;
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -25,6 +27,7 @@ const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<FileData | null>(null);
   const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
   const [userContext, setUserContext] = useState('');
+  const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
   
   // Output
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -45,6 +48,12 @@ const App: React.FC = () => {
   const handleAuthorize = (next: AccessContext) => {
     setAccess(next);
     setAccessError(null);
+  };
+
+  const cleanupPendingUploads = async (context: AccessContext | null) => {
+    if (pendingBlobUrls.length === 0) return;
+    await cleanupUploadedFiles(pendingBlobUrls, context || undefined);
+    setPendingBlobUrls([]);
   };
 
   // 1. Safety: Prevent accidental reloads
@@ -170,10 +179,12 @@ const App: React.FC = () => {
             setStatus(AppStatus.PROCESSING);
           }
         },
+        onUploadComplete: (urls) => setPendingBlobUrls(urls),
         access: access || undefined
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
+      setPendingBlobUrls([]);
       setChatMessages([]);
       chatSessionRef.current = null; 
     } catch (err: any) {
@@ -203,6 +214,7 @@ const App: React.FC = () => {
   const handleResetClick = () => setShowResetConfirm(true);
 
   const handleConfirmReset = () => {
+    void cleanupPendingUploads(access);
     setAudioFile(null);
     setSlideFiles([]);
     setResult(null);
@@ -214,6 +226,11 @@ const App: React.FC = () => {
     chatSessionRef.current = null;
     localStorage.removeItem(LOCAL_STORAGE_KEY);
     setShowResetConfirm(false);
+  };
+
+  const handleLock = () => {
+    void cleanupPendingUploads(access);
+    setAccess(null);
   };
 
   const handleCancelReset = () => setShowResetConfirm(false);
@@ -252,6 +269,13 @@ const App: React.FC = () => {
     return <AccessGate onAuthorize={handleAuthorize} error={accessError} redirectAdminTo="/admin" />;
   }
 
+  const enablePlaybackWaveform =
+    audioInputMode === 'record'
+      ? true
+      : audioFile
+        ? shouldEnableUploadWaveform(audioFile.file.size, UPLOAD_WAVEFORM_LIMIT_BYTES)
+        : false;
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       {/* Header */}
@@ -268,7 +292,7 @@ const App: React.FC = () => {
             <span className="sm:hidden">Tutor</span>
             <button
               type="button"
-              onClick={() => setAccess(null)}
+              onClick={handleLock}
               className="text-xs sm:text-sm font-normal text-slate-500 border border-slate-200 rounded-full px-3 py-1 hover:text-slate-700 hover:border-slate-300 hover:bg-slate-50"
             >
               Lock
@@ -377,7 +401,11 @@ const App: React.FC = () => {
                      </div>
                      
                      {/* New Audio Player Component */}
-                     <AudioPlayer file={audioFile.file} previewUrl={audioFile.previewUrl} />
+                     <AudioPlayer
+                       file={audioFile.file}
+                       previewUrl={audioFile.previewUrl}
+                       enableWaveform={enablePlaybackWaveform}
+                     />
                   </div>
                 )}
               </div>
