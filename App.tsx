@@ -263,12 +263,13 @@ const App: React.FC = () => {
             </div>
             <h1 className="text-xl font-bold font-serif text-slate-900 tracking-tight">LectureMate AI</h1>
           </div>
-          <div className="text-sm text-slate-500 font-medium hidden sm:flex items-center gap-3">
-            <span>The Master Tutor</span>
+          <div className="flex items-center gap-3 text-xs sm:text-sm text-slate-500 font-medium">
+            <span className="hidden sm:inline">The Master Tutor</span>
+            <span className="sm:hidden">Tutor</span>
             <button
               type="button"
               onClick={() => setAccess(null)}
-              className="text-sm font-normal text-slate-500 border border-slate-200 rounded-full px-3 py-1 hover:text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+              className="text-xs sm:text-sm font-normal text-slate-500 border border-slate-200 rounded-full px-3 py-1 hover:text-slate-700 hover:border-slate-300 hover:bg-slate-50"
             >
               Lock
             </button>

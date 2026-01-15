@@ -20,8 +20,8 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ file, previewUrl }) => {
     let active = true;
     const processAudio = async () => {
       try {
-        // Safety check for large files
-        if (file.size > 50 * 1024 * 1024) return;
+        const maxWaveformBytes = 200 * 1024 * 1024;
+        if (file.size > maxWaveformBytes) return;
 
         const arrayBuffer = await file.arrayBuffer();
         if (!active) return;
