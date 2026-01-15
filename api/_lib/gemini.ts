@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { GoogleAIFileManager } from '@google/generative-ai/server';
 import fs from 'fs';
 import path from 'path';
-import { PROMPTS } from '../prompts.js';
+import { getSystemInstruction } from './prompts.js';
 
 export async function generateStudyGuide(
   apiKey: string,
@@ -51,7 +51,7 @@ export async function generateStudyGuide(
           fileUri: uploadResult.file.uri
         }
       },
-      { text: userContext || PROMPTS.SYSTEM_INSTRUCTIONS }
+      { text: userContext || getSystemInstruction() }
     ]);
 
     return result.response.text();

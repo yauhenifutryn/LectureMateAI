@@ -1,5 +1,5 @@
 import { upload } from '@vercel/blob/client';
-import type { ChatMessage, ChatSession } from '../types';
+import type { AccessContext, ChatMessage, ChatSession } from '../types';
 
 type UploadedFile = {
   fileUrl: string;
@@ -45,22 +45,43 @@ type AnalyzeStage = 'uploading' | 'processing';
 
 type AnalyzeOptions = {
   onStageChange?: (stage: AnalyzeStage) => void;
+  access?: AccessContext;
 };
 
 type AnalyzeDependencies = {
   uploadToBlob: (file: File) => Promise<UploadedFile>;
-  processRequest: (payload: { audio: UploadedFile; slides: UploadedFile[]; userContext: string }) => Promise<ProcessResponse>;
+  processRequest: (
+    payload: { audio: UploadedFile; slides: UploadedFile[]; userContext: string },
+    access?: AccessContext
+  ) => Promise<ProcessResponse>;
 };
 
-const processRequest = async (payload: {
+const processRequest = async (
+  payload: {
   audio: UploadedFile;
   slides: UploadedFile[];
   userContext: string;
-}): Promise<ProcessResponse> => {
+  },
+  access?: AccessContext
+): Promise<ProcessResponse> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const bodyPayload = { ...payload } as {
+    audio: UploadedFile;
+    slides: UploadedFile[];
+    userContext: string;
+    demoCode?: string;
+  };
+
+  if (access?.mode === 'admin') {
+    headers.Authorization = `Bearer ${access.token}`;
+  } else if (access?.mode === 'demo') {
+    bodyPayload.demoCode = access.token;
+  }
+
   const response = await fetch('/api/process', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
+    headers,
+    body: JSON.stringify(bodyPayload)
   });
 
   const data = (await response.json()) as ProcessResponse;
@@ -121,11 +142,14 @@ export const createAnalyzeAudioLecture =
     const slides = await Promise.all(slideFiles.map((file) => uploadFn(file)));
 
     options?.onStageChange?.('processing');
-    const data = await processFn({
+    const data = await processFn(
+      {
       audio,
       slides,
       userContext
-    });
+      },
+      options?.access
+    );
 
     if (data.error) {
       throw new Error(data.error.message || 'Processing failed.');
@@ -145,18 +169,33 @@ export const analyzeAudioLecture = createAnalyzeAudioLecture({
 
 export const initializeChatSession = (
   transcript: string,
-  studyGuide: string
+  studyGuide: string,
+  access?: AccessContext
 ): ChatSession => {
   return {
     async *sendMessageStream({ history }: { message: string; history: ChatMessage[] }) {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const payload: {
+        transcript: string;
+        studyGuide: string;
+        messages: { role: string; content: string }[];
+        demoCode?: string;
+      } = {
+        transcript,
+        studyGuide,
+        messages: history.map((msg) => ({ role: msg.role, content: msg.content }))
+      };
+
+      if (access?.mode === 'admin') {
+        headers.Authorization = `Bearer ${access.token}`;
+      } else if (access?.mode === 'demo') {
+        payload.demoCode = access.token;
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          transcript,
-          studyGuide,
-          messages: history.map((msg) => ({ role: msg.role, content: msg.content }))
-        })
+        headers,
+        body: JSON.stringify(payload)
       });
 
       const data = (await response.json()) as ChatResponse;

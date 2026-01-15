@@ -13,6 +13,8 @@ import {
   Square,
   Copy,
   Check,
+  Lock,
+  LogOut,
   Play,
   Pause
 } from 'lucide-react';
@@ -31,6 +33,8 @@ export const Icons = {
   Square,
   Copy,
   Check,
+  Lock,
+  LogOut,
   Play,
   Pause
 };

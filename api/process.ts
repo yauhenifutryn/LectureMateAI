@@ -4,7 +4,8 @@ import { del } from '@vercel/blob';
 import { validateBlobUrl } from './_lib/validateBlobUrl.js';
 import { toPublicError } from './_lib/errors.js';
 import { generateStudyGuide } from './_lib/gemini.js';
-import { SYSTEM_INSTRUCTION } from './_lib/prompts.js';
+import { getSystemInstruction } from './_lib/prompts.js';
+import { AccessError, authorizeProcess } from './_lib/access.js';
 
 export const config = { maxDuration: 60 };
 
@@ -17,6 +18,7 @@ type ProcessBody = {
   audio?: FilePayload;
   slides?: FilePayload[];
   userContext?: string;
+  demoCode?: string;
 };
 
 function parseBody(req: VercelRequest): ProcessBody {
@@ -41,11 +43,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .json({ error: { code: 'missing_api_key', message: 'Server misconfigured.' } });
   }
 
-  const { audio, slides = [], userContext } = parseBody(req);
+  const { audio, slides = [], userContext, demoCode } = parseBody(req);
   const blobPrefix = process.env.BLOB_URL_PREFIX;
   const blobUrls: string[] = [];
 
   try {
+    await authorizeProcess(req, demoCode);
+
     if (!audio?.fileUrl || !audio?.mimeType) {
       throw new Error('Missing audio payload.');
     }
@@ -58,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       blobUrls.push(slide.fileUrl);
     });
 
-    const promptText = `${SYSTEM_INSTRUCTION}\n\nStudent's Additional Context:\n${
+    const promptText = `${getSystemInstruction()}\n\nStudent's Additional Context:\n${
       userContext || 'None provided.'
     }\n\nGenerate the output using the strict separators defined in the System Instructions.`;
 
@@ -71,6 +75,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ text: fullText });
   } catch (error) {
+    if (error instanceof AccessError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     const publicError = toPublicError(error);
     return res.status(500).json({ error: publicError });
   } finally {

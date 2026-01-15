@@ -33,3 +33,10 @@ export interface ChatStreamChunk {
 export interface ChatSession {
   sendMessageStream: (input: { message: string; history: ChatMessage[] }) => AsyncIterable<ChatStreamChunk>;
 }
+
+export type AccessMode = 'admin' | 'demo';
+
+export type AccessContext = {
+  mode: AccessMode;
+  token: string;
+};

@@ -13,15 +13,16 @@
     "@google/genai": "^1.35.0",
     "@google/generative-ai": "^0.21.0",
     "@vercel/blob": "^0.27.0",
+    "@vercel/kv": "^3.0.0",
     "dotenv": "^16.4.7",
-    "react": "^19.2.3",
     "lucide-react": "^0.562.0",
+    "react": "^19.2.3",
     "react-dom": "^19.2.3",
     "react-markdown": "^10.1.0"
   },
   "devDependencies": {
-    "@vercel/node": "^3.2.20",
     "@types/node": "^22.14.0",
+    "@vercel/node": "^3.2.20",
     "@vitejs/plugin-react": "^5.0.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",

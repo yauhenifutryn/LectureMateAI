@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession } from './types';
+import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext } from './types';
 import { analyzeAudioLecture, initializeChatSession } from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import AudioRecorder from './components/AudioRecorder';
@@ -8,11 +8,14 @@ import StudyGuide from './components/StudyGuide';
 import ChatInterface from './components/ChatInterface';
 import AudioPlayer from './components/AudioPlayer';
 import { Icons } from './components/Icon';
+import AccessGate from './components/AccessGate';
+import AdminPanel from './components/AdminPanel';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 
 const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
+const ACCESS_STORAGE_KEY = 'lecturemate_access_v1';
 
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
@@ -34,6 +37,15 @@ const App: React.FC = () => {
 
   // UI State
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [access, setAccess] = useState<AccessContext | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const isAdminRoute =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+
+  const handleAuthorize = (next: AccessContext) => {
+    setAccess(next);
+    setAccessError(null);
+  };
 
   // 1. Safety: Prevent accidental reloads
   useEffect(() => {
@@ -69,6 +81,21 @@ const App: React.FC = () => {
     }
   }, []);
 
+  // 2b. Access: Restore access token from LocalStorage on mount
+  useEffect(() => {
+    const savedAccess = localStorage.getItem(ACCESS_STORAGE_KEY);
+    if (!savedAccess) return;
+    try {
+      const parsed = JSON.parse(savedAccess) as AccessContext;
+      if (parsed?.mode && parsed?.token) {
+        setAccess(parsed);
+      }
+    } catch (e) {
+      console.error("Failed to restore access:", e);
+      localStorage.removeItem(ACCESS_STORAGE_KEY);
+    }
+  }, []);
+
   // 3. Backup: Save Study Guide to LocalStorage
   useEffect(() => {
     if (result) {
@@ -83,16 +110,25 @@ const App: React.FC = () => {
     }
   }, [result]);
 
+  // 3b. Access: Persist access token
+  useEffect(() => {
+    if (access) {
+      localStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(access));
+    } else {
+      localStorage.removeItem(ACCESS_STORAGE_KEY);
+    }
+  }, [access]);
+
   // 4. Initialize Chat Session
   useEffect(() => {
-    if (result && !chatSessionRef.current) {
+    if (result && access && !chatSessionRef.current) {
       try {
-        chatSessionRef.current = initializeChatSession(result.transcript, result.studyGuide);
+        chatSessionRef.current = initializeChatSession(result.transcript, result.studyGuide, access);
       } catch (e) {
         console.error("Failed to init chat", e);
       }
     }
-  }, [result]);
+  }, [result, access]);
 
   const handleAudioSelect = (files: FileData[]) => {
     if (files.length > 0) {
@@ -133,7 +169,8 @@ const App: React.FC = () => {
           if (stage === 'processing') {
             setStatus(AppStatus.PROCESSING);
           }
-        }
+        },
+        access: access || undefined
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
@@ -141,7 +178,15 @@ const App: React.FC = () => {
       chatSessionRef.current = null; 
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "An unexpected error occurred during analysis.");
+      const message = err.message || "An unexpected error occurred during analysis.";
+      const lowerMessage = message.toLowerCase();
+      if (lowerMessage.includes('access code') || lowerMessage.includes('demo code') || lowerMessage.includes('unauthorized')) {
+        setAccess(null);
+        setAccessError(message);
+        setStatus(AppStatus.IDLE);
+        return;
+      }
+      setError(message);
       setStatus(AppStatus.ERROR);
     }
   };
@@ -196,6 +241,14 @@ const App: React.FC = () => {
     URL.revokeObjectURL(url);
   };
 
+  if (isAdminRoute) {
+    return <AdminPanel access={access} onAccessChange={setAccess} />;
+  }
+
+  if (!access) {
+    return <AccessGate onAuthorize={handleAuthorize} error={accessError} />;
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">
       {/* Header */}
@@ -207,8 +260,15 @@ const App: React.FC = () => {
             </div>
             <h1 className="text-xl font-bold font-serif text-slate-900 tracking-tight">LectureMate AI</h1>
           </div>
-          <div className="text-sm text-slate-500 font-medium hidden sm:block">
-            The Master Tutor
+          <div className="text-sm text-slate-500 font-medium hidden sm:flex items-center gap-3">
+            <span>The Master Tutor</span>
+            <button
+              type="button"
+              onClick={() => setAccess(null)}
+              className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+            >
+              Lock
+            </button>
           </div>
         </div>
       </header>

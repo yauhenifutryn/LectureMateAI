@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from '@google/genai';
 import { toPublicError } from './_lib/errors.js';
 import { CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts.js';
+import { AccessError, authorizeChat } from './_lib/access.js';
 
 type ChatMessage = {
   role: 'user' | 'model';
@@ -13,6 +14,7 @@ type ChatBody = {
   transcript?: string;
   studyGuide?: string;
   messages?: ChatMessage[];
+  demoCode?: string;
 };
 
 function parseBody(req: VercelRequest): ChatBody {
@@ -38,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { transcript, studyGuide, messages } = parseBody(req);
+    const { transcript, studyGuide, messages, demoCode } = parseBody(req);
     if (!transcript || !studyGuide || !Array.isArray(messages) || messages.length === 0) {
       throw new Error('Missing chat payload.');
     }
@@ -47,6 +49,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (lastMessage.role !== 'user') {
       throw new Error('Last chat message must be from user.');
     }
+
+    await authorizeChat(req, demoCode);
 
     const ai = new GoogleGenAI({ apiKey });
     const history = [
@@ -78,6 +82,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ reply });
   } catch (error) {
+    if (error instanceof AccessError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     const publicError = toPublicError(error);
     return res.status(500).json({ error: publicError });
   }
