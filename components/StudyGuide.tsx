@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Icons } from './Icon';
 
 interface StudyGuideProps {
@@ -49,6 +50,7 @@ const StudyGuide: React.FC<StudyGuideProps> = ({ content }) => {
 
       <div className="p-8 md:p-12 prose prose-slate prose-headings:font-serif prose-headings:text-slate-800 prose-p:text-slate-600 prose-li:text-slate-600 max-w-none">
         <ReactMarkdown
+           remarkPlugins={[remarkGfm]}
            components={{
             h1: ({node, ...props}) => <h1 className="text-3xl font-bold border-b border-slate-200 pb-4 mb-6 text-primary-900" {...props} />,
             h2: ({node, ...props}) => <h2 className="text-2xl font-semibold mt-8 mb-4 text-primary-800" {...props} />,
@@ -57,6 +59,21 @@ const StudyGuide: React.FC<StudyGuideProps> = ({ content }) => {
             li: ({node, ...props}) => <li className="text-slate-700 leading-relaxed" {...props} />,
             strong: ({node, ...props}) => <strong className="font-semibold text-slate-900 bg-yellow-50 px-1 rounded" {...props} />,
             blockquote: ({node, ...props}) => <blockquote className="border-l-4 border-primary-300 pl-4 italic text-slate-500 my-4" {...props} />,
+            table: ({node, ...props}) => (
+              <div className="overflow-x-auto my-4">
+                <table className="min-w-full border border-slate-200 text-sm" {...props} />
+              </div>
+            ),
+            thead: ({node, ...props}) => <thead className="bg-slate-50" {...props} />,
+            th: ({node, ...props}) => (
+              <th
+                className="border border-slate-200 px-3 py-2 text-left font-semibold text-slate-700"
+                {...props}
+              />
+            ),
+            td: ({node, ...props}) => (
+              <td className="border border-slate-200 px-3 py-2 align-top text-slate-700" {...props} />
+            ),
           }}
         >
           {content}

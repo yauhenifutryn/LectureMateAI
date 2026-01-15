@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { Icons } from './Icon';
 import { ChatMessage, ChatSession } from '../types';
 
@@ -122,7 +123,28 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatSession, initialMessa
               {msg.role === 'user' ? (
                 <div className="whitespace-pre-wrap">{msg.content}</div>
               ) : (
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    table: ({node, ...props}) => (
+                      <div className="overflow-x-auto my-3">
+                        <table className="min-w-full border border-slate-200 text-sm" {...props} />
+                      </div>
+                    ),
+                    thead: ({node, ...props}) => <thead className="bg-slate-50" {...props} />,
+                    th: ({node, ...props}) => (
+                      <th
+                        className="border border-slate-200 px-2.5 py-1.5 text-left font-semibold text-slate-700"
+                        {...props}
+                      />
+                    ),
+                    td: ({node, ...props}) => (
+                      <td className="border border-slate-200 px-2.5 py-1.5 align-top text-slate-700" {...props} />
+                    )
+                  }}
+                >
+                  {msg.content}
+                </ReactMarkdown>
               )}
               {msg.isStreaming && (
                  <span className="inline-block w-2 h-4 ml-1 bg-slate-400 animate-pulse align-middle"></span>
