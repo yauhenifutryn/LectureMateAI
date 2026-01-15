@@ -265,7 +265,7 @@ const App: React.FC = () => {
             <button
               type="button"
               onClick={() => setAccess(null)}
-              className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+              className="text-sm font-semibold text-slate-500 hover:text-slate-700"
             >
               Lock
             </button>
