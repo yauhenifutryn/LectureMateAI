@@ -74,9 +74,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       promptText
     );
 
-    storeResultMarkdown(fullText, audio.fileUrl).catch((error) => {
+    try {
+      await storeResultMarkdown(fullText, audio.fileUrl);
+    } catch (error) {
       console.error('Result storage failed:', error);
-    });
+    }
 
     return res.status(200).json({ text: fullText });
   } catch (error) {
