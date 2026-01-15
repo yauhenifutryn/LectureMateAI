@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icons } from './Icon';
+import { appendAmplitude } from './audioWaveform';
 
 interface AudioRecorderProps {
   onRecordingComplete: (file: File) => void;
@@ -127,43 +128,34 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
         const rms = Math.sqrt(sum / bufferLength);
         
         // Push simplified amplitude to history
-        // Sensitivity factor to make waveform look good
-        const amp = Math.min(1, rms * 5); 
-        amplitudeHistoryRef.current.push(amp);
+        const amp = Math.min(1, rms * 5);
 
-        // Rendering Logic: Squeeze Effect
+        // Rendering Logic: iPhone-style infinite run
         const width = canvas.width;
         const height = canvas.height;
+
+        const barWidth = 3;
+        const gap = 2;
+        const barSpan = barWidth + gap;
+        const maxBars = Math.max(1, Math.floor(width / barSpan));
+
+        amplitudeHistoryRef.current = appendAmplitude(
+          amplitudeHistoryRef.current,
+          amp,
+          maxBars
+        );
+
         const history = amplitudeHistoryRef.current;
-        const count = history.length;
-        
+        const startX = Math.max(0, width - history.length * barSpan);
+
         ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = '#ef4444'; // Red-500
+        ctx.fillStyle = '#EE3B30';
 
-        // Configuration
-        const baseBarWidth = 4;
-        const baseGap = 1;
-        
-        // Determine Scaling
-        // If items * baseWidth > canvasWidth, we scale down to fit
-        const totalNeededWidth = count * (baseBarWidth + baseGap);
-        const scale = totalNeededWidth > width ? width / totalNeededWidth : 1;
-        
-        const currentBarWidth = Math.max(0.5, baseBarWidth * scale);
-        const currentGap = baseGap * scale;
-        
-        // Center alignment logic if not filling screen yet
-        let startX = 0;
-        if (totalNeededWidth < width) {
-            startX = (width - totalNeededWidth) / 2;
-        }
-
-        for(let i = 0; i < count; i++) {
-            const h = Math.max(2, history[i] * height * 0.9);
-            const x = startX + i * (currentBarWidth + currentGap);
-            const y = (height - h) / 2;
-            
-            ctx.fillRect(x, y, currentBarWidth, h);
+        for (let i = 0; i < history.length; i += 1) {
+          const h = Math.max(2, history[i] * height * 0.9);
+          const x = startX + i * barSpan;
+          const y = (height - h) / 2;
+          ctx.fillRect(x, y, barWidth, h);
         }
       };
 

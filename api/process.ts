@@ -1,11 +1,11 @@
 import 'dotenv/config';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { del } from '@vercel/blob';
 import { validateBlobUrl } from './_lib/validateBlobUrl.js';
 import { toPublicError } from './_lib/errors.js';
 import { generateStudyGuide } from './_lib/gemini.js';
 import { getSystemInstruction } from './_lib/prompts.js';
 import { AccessError, authorizeProcess } from './_lib/access.js';
+import { cleanupBlobUrls } from './_lib/blobCleanup.js';
 
 export const config = { maxDuration: 60 };
 
@@ -81,6 +81,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const publicError = toPublicError(error);
     return res.status(500).json({ error: publicError });
   } finally {
-    await Promise.all(blobUrls.map((url) => del(url).catch(() => null)));
+    await cleanupBlobUrls(blobUrls);
   }
 }

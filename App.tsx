@@ -352,7 +352,7 @@ const App: React.FC = () => {
                        onFileSelect={handleAudioSelect} 
                        accept="audio/*"
                        label="Upload Audio or Video"
-                       subLabel="MP3, WAV, MP4, MOV (Max 2GB)"
+                       subLabel="Recommended: < 100 MB"
                      />
                    ) : (
                      <AudioRecorder onRecordingComplete={handleRecordingComplete} />
@@ -377,11 +377,7 @@ const App: React.FC = () => {
                      </div>
                      
                      {/* New Audio Player Component */}
-                     <AudioPlayer
-                       file={audioFile.file}
-                       previewUrl={audioFile.previewUrl}
-                       enableWaveform={audioInputMode === 'record'}
-                     />
+                     <AudioPlayer file={audioFile.file} previewUrl={audioFile.previewUrl} />
                   </div>
                 )}
               </div>

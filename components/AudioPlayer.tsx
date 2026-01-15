@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Icons } from './Icon';
+import { resampleWaveformData } from './audioWaveform';
 
 interface AudioPlayerProps {
   file: File;
@@ -17,6 +18,37 @@ export function shouldRenderWaveform(
   if (!enableWaveform) return false;
   if (!file.type.includes('audio')) return false;
   return file.size <= maxWaveformBytes;
+}
+
+export function resetAudioElement(audio: {
+  pause: () => void;
+  load: () => void;
+  currentTime: number;
+  src: string;
+}): void;
+export function resetAudioElement(
+  audio: { pause: () => void; load: () => void; currentTime: number; src: string },
+  previewUrl?: string
+): void {
+  audio.pause();
+  audio.currentTime = 0;
+  if (previewUrl) {
+    audio.src = previewUrl;
+  }
+  audio.load();
+}
+
+export async function tryPlayAudio(
+  audio: { play: () => Promise<void> },
+  logger: { error: (...args: unknown[]) => void } = console
+): Promise<boolean> {
+  try {
+    await audio.play();
+    return true;
+  } catch (error) {
+    logger.error('Audio playback failed:', error);
+    return false;
+  }
 }
 
 const AudioPlayer: React.FC<AudioPlayerProps> = ({
@@ -55,26 +87,22 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         setDuration(audioBuffer.duration);
 
-        // Extract and Downsample
-        const rawData = audioBuffer.getChannelData(0); 
-        const samples = 150; // Resolution of bars
-        const blockSize = Math.floor(rawData.length / samples);
-        const filteredData = [];
-        
-        for (let i = 0; i < samples; i++) {
-          let sum = 0;
-          for (let j = 0; j < blockSize; j++) {
-            sum += Math.abs(rawData[blockSize * i + j]);
-          }
-          filteredData.push(sum / blockSize);
-        }
+        // Extract and downsample
+        const rawData = audioBuffer.getChannelData(0);
+        const targetBars = canvasRef.current
+          ? Math.max(60, Math.floor(canvasRef.current.width / 6))
+          : 150;
+        const normalizedData = resampleWaveformData(
+          Array.from(rawData, (value) => Math.abs(value)),
+          targetBars
+        );
 
         // Normalize data (0.0 - 1.0)
-        const max = Math.max(...filteredData);
+        const max = Math.max(...normalizedData);
         const multiplier = max > 0 ? 1 / max : 1;
-        const normalizedData = filteredData.map(n => n * multiplier);
+        const scaledData = normalizedData.map((n) => n * multiplier);
         
-        setWaveformData(normalizedData);
+        setWaveformData(scaledData);
         audioCtx.close();
       } catch (e) {
         console.warn("Audio processing skipped or failed", e);
@@ -87,6 +115,14 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     
     return () => { active = false; };
   }, [file, enableWaveform]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    resetAudioElement(audio, previewUrl);
+    setIsPlaying(false);
+    setCurrentTime(0);
+  }, [previewUrl]);
 
   // Sync React state with Audio Element
   useEffect(() => {
@@ -140,10 +176,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ctx.beginPath();
         ctx.moveTo(0, height / 2);
         ctx.lineTo(width * progressPercent, height / 2);
-        ctx.strokeStyle = '#EE3B30';
-        ctx.lineWidth = 4;
-        ctx.lineCap = 'round';
-        ctx.stroke();
+      ctx.strokeStyle = '#EE3B30';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
       }
       return;
     }
@@ -160,9 +196,9 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
       const barStartPercent = index / waveformData.length;
       
       if (barStartPercent < progressPercent) {
-        ctx.fillStyle = '#ef4444'; // Played: Red-500
+        ctx.fillStyle = '#d92b23';
       } else {
-        ctx.fillStyle = '#fca5a5'; // Unplayed: Red-300 (Faded)
+        ctx.fillStyle = '#fca5a5';
       }
 
       // Height with mirror effect
@@ -197,16 +233,16 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
   }, [draw, isPlaying]);
 
 
-  const togglePlay = () => {
-    if (audioRef.current) {
-      if (isPlaying) {
-        audioRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        audioRef.current.play();
-        setIsPlaying(true);
-      }
+  const togglePlay = async () => {
+    if (!audioRef.current) return;
+    if (isPlaying) {
+      audioRef.current.pause();
+      setIsPlaying(false);
+      return;
     }
+
+    const started = await tryPlayAudio(audioRef.current);
+    setIsPlaying(started);
   };
 
   const handleSeek = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -238,6 +274,7 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
         <div className="flex items-center gap-4">
              {/* Play/Pause Button */}
              <button 
+                type="button"
                 onClick={togglePlay}
                 className="w-12 h-12 flex items-center justify-center rounded-full bg-red-50 text-red-600 hover:bg-red-100 transition-all hover:scale-105 active:scale-95 shrink-0 shadow-sm border border-red-100"
              >
