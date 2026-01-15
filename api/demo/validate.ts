@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { validateDemoCode } from '../_lib/access.js';
+import { AccessError, validateDemoCode } from '../_lib/access.js';
 
 type ValidateBody = {
   code?: string;
@@ -33,7 +33,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ remaining });
   } catch (error) {
+    if (error instanceof AccessError) {
+      return res.status(401).json({ error: { code: error.code, message: error.message } });
+    }
     const message = error instanceof Error ? error.message : 'Invalid code.';
-    return res.status(400).json({ error: { code: 'invalid_code', message } });
+    return res.status(500).json({ error: { code: 'kv_error', message } });
   }
 }

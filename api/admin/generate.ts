@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateDemoCode, requireAdmin, storeDemoCode } from '../_lib/access.js';
+import { AccessError, generateDemoCode, requireAdmin, storeDemoCode } from '../_lib/access.js';
 
 type GenerateBody = {
   uses?: number;
@@ -27,7 +27,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ code, uses: finalUses });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unauthorized.';
-    return res.status(401).json({ error: { code: 'unauthorized', message } });
+    if (error instanceof AccessError) {
+      return res.status(401).json({ error: { code: error.code, message: error.message } });
+    }
+    const message = error instanceof Error ? error.message : 'Unable to generate code.';
+    return res.status(500).json({ error: { code: 'kv_error', message } });
   }
 }

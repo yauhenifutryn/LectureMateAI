@@ -33,6 +33,16 @@ export class AccessError extends Error {
   }
 }
 
+export function isKvConfigured(): boolean {
+  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+}
+
+export function ensureKvConfigured(): void {
+  if (!isKvConfigured()) {
+    throw new Error('KV not configured. Connect the KV store to this project.');
+  }
+}
+
 export function getAdminToken(req: VercelRequest): string | null {
   const header = req.headers.authorization || '';
   if (!header.toLowerCase().startsWith('bearer ')) return null;
@@ -57,6 +67,7 @@ export function generateDemoCode(): string {
 
 async function logAccessEvent(event: AccessEvent): Promise<void> {
   try {
+    if (!isKvConfigured()) return;
     await kv.lpush(EVENT_LIST_KEY, JSON.stringify(event));
     await kv.ltrim(EVENT_LIST_KEY, 0, EVENT_LIMIT - 1);
   } catch {
@@ -65,12 +76,14 @@ async function logAccessEvent(event: AccessEvent): Promise<void> {
 }
 
 export async function storeDemoCode(code: string, uses: number): Promise<void> {
+  ensureKvConfigured();
   const normalized = normalizeDemoCode(code);
   await kv.set(`${DEMO_PREFIX}${normalized}`, uses);
   await kv.sadd(DEMO_SET_KEY, normalized);
 }
 
 export async function listDemoCodes(): Promise<Array<{ code: string; remaining: number }>> {
+  ensureKvConfigured();
   const codes = (await kv.smembers(DEMO_SET_KEY)) as string[];
   if (!codes || codes.length === 0) return [];
 
@@ -88,12 +101,14 @@ export async function listDemoCodes(): Promise<Array<{ code: string; remaining: 
 }
 
 export async function revokeDemoCode(code: string): Promise<void> {
+  ensureKvConfigured();
   const normalized = normalizeDemoCode(code);
   await kv.del(`${DEMO_PREFIX}${normalized}`);
   await kv.srem(DEMO_SET_KEY, normalized);
 }
 
 export async function validateDemoCode(code: string): Promise<number | null> {
+  ensureKvConfigured();
   const normalized = normalizeDemoCode(code);
   const remaining = await kv.get<number>(`${DEMO_PREFIX}${normalized}`);
   if (typeof remaining !== 'number') return null;
@@ -102,6 +117,7 @@ export async function validateDemoCode(code: string): Promise<number | null> {
 }
 
 export async function consumeDemoCode(code: string): Promise<number | null> {
+  ensureKvConfigured();
   const normalized = normalizeDemoCode(code);
   const remaining = await kv.decr(`${DEMO_PREFIX}${normalized}`);
   if (typeof remaining !== 'number') return null;
@@ -114,6 +130,7 @@ export async function consumeDemoCode(code: string): Promise<number | null> {
 }
 
 export async function listAccessEvents(limit = 50): Promise<AccessEvent[]> {
+  ensureKvConfigured();
   const size = Math.max(1, Math.min(limit, EVENT_LIMIT));
   const rows = (await kv.lrange(EVENT_LIST_KEY, 0, size - 1)) as string[];
   return rows

@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { requireAdmin, revokeDemoCode } from '../_lib/access.js';
+import { AccessError, requireAdmin, revokeDemoCode } from '../_lib/access.js';
 
 type RevokeBody = {
   code?: string;
@@ -28,7 +28,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await revokeDemoCode(code);
     return res.status(200).json({ ok: true });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unauthorized.';
-    return res.status(401).json({ error: { code: 'unauthorized', message } });
+    if (error instanceof AccessError) {
+      return res.status(401).json({ error: { code: error.code, message: error.message } });
+    }
+    const message = error instanceof Error ? error.message : 'Unable to revoke code.';
+    return res.status(500).json({ error: { code: 'kv_error', message } });
   }
 }
