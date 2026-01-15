@@ -246,7 +246,7 @@ const App: React.FC = () => {
   }
 
   if (!access) {
-    return <AccessGate onAuthorize={handleAuthorize} error={accessError} />;
+    return <AccessGate onAuthorize={handleAuthorize} error={accessError} redirectAdminTo="/admin" />;
   }
 
   return (
