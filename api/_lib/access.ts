@@ -134,7 +134,7 @@ export async function validateDemoCode(code: string): Promise<number | null> {
   const normalized = normalizeDemoCode(code);
   const remaining = await kv.get<number>(`${DEMO_PREFIX}${normalized}`);
   if (typeof remaining !== 'number') return null;
-  if (remaining < 0) return null;
+  if (remaining <= 0) return null;
   return remaining;
 }
 
@@ -144,8 +144,7 @@ export async function consumeDemoCode(code: string): Promise<number | null> {
   const remaining = await kv.decr(`${DEMO_PREFIX}${normalized}`);
   if (typeof remaining !== 'number') return null;
   if (remaining < 0) {
-    await kv.del(`${DEMO_PREFIX}${normalized}`);
-    await kv.srem(DEMO_SET_KEY, normalized);
+    await kv.set(`${DEMO_PREFIX}${normalized}`, 0);
     return null;
   }
   return remaining;
@@ -154,14 +153,21 @@ export async function consumeDemoCode(code: string): Promise<number | null> {
 export async function listAccessEvents(limit = 50): Promise<AccessEvent[]> {
   ensureKvConfigured();
   const size = Math.max(1, Math.min(limit, EVENT_LIMIT));
-  const rows = (await kv.lrange(EVENT_LIST_KEY, 0, size - 1)) as string[];
+  const rows = (await kv.lrange(EVENT_LIST_KEY, 0, size - 1)) as Array<
+    string | AccessEvent
+  >;
+
   return rows
     .map((row) => {
-      try {
-        return JSON.parse(row) as AccessEvent;
-      } catch {
-        return null;
+      if (!row) return null;
+      if (typeof row === 'string') {
+        try {
+          return JSON.parse(row) as AccessEvent;
+        } catch {
+          return null;
+        }
       }
+      return row;
     })
     .filter((row): row is AccessEvent => row !== null);
 }

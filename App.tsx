@@ -181,9 +181,12 @@ const App: React.FC = () => {
       const message = err.message || "An unexpected error occurred during analysis.";
       const lowerMessage = message.toLowerCase();
       if (lowerMessage.includes('access code') || lowerMessage.includes('demo code') || lowerMessage.includes('unauthorized')) {
-        setAccess(null);
-        setAccessError(message);
-        setStatus(AppStatus.IDLE);
+        setError(`${message} Click "Lock" to enter a new access code.`);
+        if (result) {
+          setStatus(AppStatus.COMPLETED);
+        } else {
+          setStatus(AppStatus.ERROR);
+        }
         return;
       }
       setError(message);
@@ -483,6 +486,11 @@ const App: React.FC = () => {
         {/* Results View */}
         {status === AppStatus.COMPLETED && result && (
           <div className="animate-fade-in space-y-6">
+             {error && (
+               <div className="bg-amber-50 border border-amber-200 text-amber-700 text-sm rounded-lg px-4 py-3">
+                 {error}
+               </div>
+             )}
              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-2xl font-serif font-bold text-slate-900">Analysis Result</h2>
