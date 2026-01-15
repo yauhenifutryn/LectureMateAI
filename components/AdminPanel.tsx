@@ -26,10 +26,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
   const [uses, setUses] = useState('3');
   const [isLoading, setIsLoading] = useState(false);
   const [isEventsLoading, setIsEventsLoading] = useState(false);
+  const [isStatsLoading, setIsStatsLoading] = useState(false);
+  const [isPurging, setIsPurging] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
+  const [purgeStatus, setPurgeStatus] = useState<string | null>(null);
+  const [stats, setStats] = useState<{ totalSize: number; fileCount: number } | null>(null);
 
   const adminToken = access?.mode === 'admin' ? access.token : null;
+
+  const formatMegabytes = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2);
 
   const loadCodes = async () => {
     if (!adminToken) return;
@@ -81,10 +87,72 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     }
   };
 
+  const loadStats = async () => {
+    if (!adminToken) return;
+    setIsStatsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/stats', {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        onAccessChange(null);
+        throw new Error(data?.error?.message || 'Unauthorized.');
+      }
+      if (!response.ok) {
+        throw new Error(data?.error?.message || 'Unable to load storage stats.');
+      }
+      setStats(data);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load storage stats.';
+      setError(message);
+    } finally {
+      setIsStatsLoading(false);
+    }
+  };
+
+  const handlePurge = async () => {
+    if (!adminToken) return;
+    if (typeof window !== 'undefined') {
+      const confirmed = window.confirm('Permanently delete all stored uploads?');
+      if (!confirmed) return;
+    }
+    setIsPurging(true);
+    setError(null);
+    setPurgeStatus(null);
+    try {
+      const response = await fetch('/api/admin/purge', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ confirm: true })
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        onAccessChange(null);
+        throw new Error(data?.error?.message || 'Unauthorized.');
+      }
+      if (!response.ok) {
+        throw new Error(data?.error?.message || 'Unable to purge storage.');
+      }
+      setPurgeStatus(`Deleted ${data.deleted ?? 0} file(s).`);
+      await loadStats();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to purge storage.';
+      setError(message);
+    } finally {
+      setIsPurging(false);
+    }
+  };
+
   useEffect(() => {
     if (adminToken) {
       loadCodes();
       loadEvents();
+      loadStats();
     }
   }, [adminToken]);
 
@@ -229,6 +297,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
           {error && (
             <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
               {error}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">Storage</h2>
+              <p className="text-sm text-slate-500">
+                Storage Used:{' '}
+                {stats ? `${formatMegabytes(stats.totalSize)} MB / 250 MB` : 'Loading...'}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={loadStats}
+              className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+              disabled={isStatsLoading}
+            >
+              Refresh
+            </button>
+          </div>
+
+          <p className="text-xs text-slate-500">
+            Files stored: {stats ? stats.fileCount : isStatsLoading ? 'Loading...' : '0'}
+          </p>
+
+          <button
+            type="button"
+            onClick={handlePurge}
+            disabled={isPurging}
+            className="bg-red-600 hover:bg-red-700 disabled:bg-red-300 text-white text-sm font-semibold px-4 py-2.5 rounded-lg"
+          >
+            {isPurging ? 'Purging...' : 'Purge All Files'}
+          </button>
+
+          {purgeStatus && (
+            <div className="text-sm bg-amber-50 text-amber-700 border border-amber-100 rounded-lg px-3 py-2">
+              {purgeStatus}
             </div>
           )}
         </section>

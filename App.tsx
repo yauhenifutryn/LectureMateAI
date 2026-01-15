@@ -377,7 +377,11 @@ const App: React.FC = () => {
                      </div>
                      
                      {/* New Audio Player Component */}
-                     <AudioPlayer file={audioFile.file} previewUrl={audioFile.previewUrl} />
+                     <AudioPlayer
+                       file={audioFile.file}
+                       previewUrl={audioFile.previewUrl}
+                       enableWaveform={audioInputMode === 'record'}
+                     />
                   </div>
                 )}
               </div>

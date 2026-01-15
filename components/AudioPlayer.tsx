@@ -4,9 +4,26 @@ import { Icons } from './Icon';
 interface AudioPlayerProps {
   file: File;
   previewUrl: string;
+  enableWaveform?: boolean;
 }
 
-const AudioPlayer: React.FC<AudioPlayerProps> = ({ file, previewUrl }) => {
+const DEFAULT_MAX_WAVEFORM_BYTES = 200 * 1024 * 1024;
+
+export function shouldRenderWaveform(
+  file: { size: number; type: string },
+  enableWaveform: boolean,
+  maxWaveformBytes = DEFAULT_MAX_WAVEFORM_BYTES
+): boolean {
+  if (!enableWaveform) return false;
+  if (!file.type.includes('audio')) return false;
+  return file.size <= maxWaveformBytes;
+}
+
+const AudioPlayer: React.FC<AudioPlayerProps> = ({
+  file,
+  previewUrl,
+  enableWaveform = true
+}) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -20,8 +37,10 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ file, previewUrl }) => {
     let active = true;
     const processAudio = async () => {
       try {
-        const maxWaveformBytes = 200 * 1024 * 1024;
-        if (file.size > maxWaveformBytes) return;
+        if (!shouldRenderWaveform(file, enableWaveform)) {
+          setWaveformData([]);
+          return;
+        }
 
         const arrayBuffer = await file.arrayBuffer();
         if (!active) return;
@@ -63,11 +82,11 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ file, previewUrl }) => {
     };
 
     if (file.type.includes('audio')) {
-        processAudio();
+      processAudio();
     }
     
     return () => { active = false; };
-  }, [file]);
+  }, [file, enableWaveform]);
 
   // Sync React state with Audio Element
   useEffect(() => {
@@ -105,20 +124,33 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({ file, previewUrl }) => {
     
     ctx.clearRect(0, 0, width, height);
 
+    const progressPercent = duration > 0 ? currentTime / duration : 0;
+
     if (waveformData.length === 0) {
-        // Fallback line
+      // Fallback line for uploads
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.strokeStyle = '#fecaca';
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.stroke();
+
+      if (progressPercent > 0) {
         ctx.beginPath();
-        ctx.moveTo(0, height/2);
-        ctx.lineTo(width, height/2);
-        ctx.strokeStyle = '#fee2e2';
+        ctx.moveTo(0, height / 2);
+        ctx.lineTo(width * progressPercent, height / 2);
+        ctx.strokeStyle = '#EE3B30';
+        ctx.lineWidth = 4;
+        ctx.lineCap = 'round';
         ctx.stroke();
-        return;
+      }
+      return;
     }
 
     const barWidth = width / waveformData.length;
     const gap = 1;
     const effectiveBarWidth = Math.max(0.5, barWidth - gap);
-    const progressPercent = duration > 0 ? currentTime / duration : 0;
 
     waveformData.forEach((amp, index) => {
       const x = index * barWidth;
