@@ -63,9 +63,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       blobUrls.push(slide.fileUrl);
     });
 
-    const promptText = `${getSystemInstruction()}\n\nStudent's Additional Context:\n${
-      userContext || 'None provided.'
-    }\n\nGenerate the output using the strict separators defined in the System Instructions.`;
+  const promptText = `${getSystemInstruction()}\n\nStudent's Additional Context:\n${
+    userContext || 'None provided.'
+  }\n\nUser request: include transcript, slides, and raw notes verbatim. Use SOURCE_APPENDIX_MODE.\n\nGenerate the output using the strict separators defined in the System Instructions.`;
 
     const fullText = await generateStudyGuide(
       apiKey,
