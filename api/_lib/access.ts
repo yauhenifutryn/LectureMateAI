@@ -18,7 +18,7 @@ export type AccessResult = {
 type AccessEvent = {
   at: string;
   mode: AccessMode;
-  action: 'process' | 'chat';
+  action: 'process' | 'chat' | 'auth';
   code?: string;
 };
 
@@ -195,6 +195,15 @@ export async function authorizeProcess(
   });
 
   return { mode: 'demo', code: normalizeDemoCode(demoCode), remaining };
+}
+
+export async function recordDemoValidation(code: string): Promise<void> {
+  await logAccessEvent({
+    at: new Date().toISOString(),
+    mode: 'demo',
+    action: 'auth',
+    code: normalizeDemoCode(code)
+  });
 }
 
 export async function authorizeChat(

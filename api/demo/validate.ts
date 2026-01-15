@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { AccessError, validateDemoCode } from '../_lib/access.js';
+import { AccessError, recordDemoValidation, validateDemoCode } from '../_lib/access.js';
 
 type ValidateBody = {
   code?: string;
@@ -31,6 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .json({ error: { code: 'invalid_code', message: 'Invalid or exhausted demo code.' } });
     }
 
+    await recordDemoValidation(code);
     return res.status(200).json({ remaining });
   } catch (error) {
     if (error instanceof AccessError) {

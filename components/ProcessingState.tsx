@@ -103,20 +103,19 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel }) => {
           ></div>
         </div>
         
-        {/* Context info for long waits */}
-        {elapsedSeconds > 20 && (
-          <div className="animate-fade-in flex flex-col items-center mt-4 space-y-3">
+        <div className="animate-fade-in flex flex-col items-center mt-4 space-y-3">
+          {elapsedSeconds > 20 && (
             <p className="text-xs text-slate-400">
-              Processing large audio files can take 1-3 minutes. <br/> Please do not close this tab.
+              Processing large audio files can take 1-3 minutes. <br /> Please do not close this tab.
             </p>
-            <button 
-              onClick={onCancel}
-              className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-medium border border-transparent hover:border-red-100"
-            >
-              Cancel & Go Back
-            </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={onCancel}
+            className="text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded-md transition-colors font-medium border border-transparent hover:border-red-100"
+          >
+            Cancel & Go Back
+          </button>
+        </div>
       </div>
     </div>
   );

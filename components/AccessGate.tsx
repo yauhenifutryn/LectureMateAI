@@ -7,6 +7,7 @@ type AccessGateProps = {
   defaultMode?: AccessMode;
   allowModeToggle?: boolean;
   redirectAdminTo?: string;
+  redirectDemoTo?: string;
   error?: string | null;
 };
 
@@ -15,6 +16,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
   defaultMode = 'demo',
   allowModeToggle = true,
   redirectAdminTo,
+  redirectDemoTo,
   error
 }) => {
   const [mode, setMode] = useState<AccessMode>(defaultMode);
@@ -53,6 +55,9 @@ const AccessGate: React.FC<AccessGateProps> = ({
       onAuthorize({ mode, token: trimmed });
       if (mode === 'admin' && redirectAdminTo && typeof window !== 'undefined') {
         window.location.assign(redirectAdminTo);
+      }
+      if (mode === 'demo' && redirectDemoTo && typeof window !== 'undefined') {
+        window.location.assign(redirectDemoTo);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Access denied.';

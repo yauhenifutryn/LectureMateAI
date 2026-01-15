@@ -16,7 +16,7 @@ type DemoCode = {
 type AccessEvent = {
   at: string;
   mode: 'admin' | 'demo';
-  action: 'process' | 'chat';
+  action: 'process' | 'chat' | 'auth';
   code?: string;
 };
 
@@ -86,6 +86,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
       loadCodes();
       loadEvents();
     }
+  }, [adminToken]);
+
+  useEffect(() => {
+    if (!adminToken) return;
+    const interval = setInterval(() => {
+      loadEvents();
+    }, 15000);
+    return () => clearInterval(interval);
   }, [adminToken]);
 
   const handleGenerate = async () => {
@@ -159,7 +167,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
         onAuthorize={(next) => onAccessChange(next)}
         defaultMode="admin"
         error={error}
-        allowModeToggle={false}
+        allowModeToggle={true}
+        redirectDemoTo="/"
       />
     );
   }
@@ -176,7 +185,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
           </div>
           <button
             type="button"
-            onClick={() => onAccessChange(null)}
+            onClick={() => {
+              onAccessChange(null);
+              if (typeof window !== 'undefined') {
+                window.location.assign('/');
+              }
+            }}
             className="inline-flex items-center gap-2 text-sm font-semibold text-slate-600 hover:text-slate-900"
           >
             <Icons.LogOut size={16} />
