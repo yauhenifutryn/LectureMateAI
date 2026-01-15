@@ -15,6 +15,7 @@
    ```
    `BLOB_URL_PREFIX` is optional but recommended for stricter validation.
    `SYSTEM_INSTRUCTIONS` and `ADMIN_PASSWORD` must be set for production.
+   Recommended prompt template: `prompts/system_instructions.txt`.
    Vercel KV will add `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `KV_REST_API_READ_ONLY_TOKEN` automatically.
 3. Run the app:
    `npm run dev`

@@ -15,6 +15,7 @@ import { Icons } from './components/Icon';
 import AccessGate from './components/AccessGate';
 import AdminPanel from './components/AdminPanel';
 import { shouldEnableUploadWaveform } from './utils/waveformPolicy';
+import { getAnalysisStartState } from './utils/analysisState';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
@@ -175,6 +176,11 @@ const App: React.FC = () => {
     }
 
     try {
+      const startState = getAnalysisStartState();
+      setResult(startState.result);
+      setActiveTab(startState.activeTab);
+      setError(startState.error);
+
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
       const analysis = await analyzeAudioLectureWithCleanup(audioFile.file, slides, userContext, {

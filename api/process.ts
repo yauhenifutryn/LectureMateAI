@@ -6,6 +6,7 @@ import { generateStudyGuide } from './_lib/gemini.js';
 import { getSystemInstruction } from './_lib/prompts.js';
 import { AccessError, authorizeProcess } from './_lib/access.js';
 import { cleanupBlobUrls } from './_lib/blobCleanup.js';
+import { storeResultMarkdown } from './_lib/resultStorage.js';
 
 export const config = { maxDuration: 60 };
 
@@ -72,6 +73,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       audio.mimeType,
       promptText
     );
+
+    storeResultMarkdown(fullText, audio.fileUrl).catch((error) => {
+      console.error('Result storage failed:', error);
+    });
 
     return res.status(200).json({ text: fullText });
   } catch (error) {
