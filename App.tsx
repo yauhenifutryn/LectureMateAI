@@ -600,7 +600,7 @@ const App: React.FC = () => {
         )}
       </main>
       <footer className="mt-10 text-center text-xs text-slate-400">
-        © 2026 Yauheni Futryn. All rights reserved.
+        Copyright 2026 Yauheni Futryn. All rights reserved.
       </footer>
     </div>
   );
