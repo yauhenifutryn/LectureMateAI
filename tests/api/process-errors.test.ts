@@ -6,4 +6,9 @@ describe('toPublicError', () => {
     const err = new Error('Payload Too Large');
     expect(toPublicError(err).code).toBe('payload_too_large');
   });
+
+  it('maps processing timeout', () => {
+    const err = new Error('Gemini processing timed out.');
+    expect(toPublicError(err).code).toBe('processing_timeout');
+  });
 });

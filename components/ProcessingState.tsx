@@ -1,5 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { Icons } from './Icon';
+import { getElapsedSeconds } from '../utils/time';
 
 interface ProcessingStateProps {
   onCancel: () => void;
@@ -19,11 +20,15 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel }) => {
   const [progress, setProgress] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const startTimeRef = useRef<number>(Date.now());
 
   useEffect(() => {
     // 1. Elapsed Time Timer
+    startTimeRef.current = Date.now();
+    setElapsedSeconds(0);
+
     const timerInterval = setInterval(() => {
-      setElapsedSeconds(prev => prev + 1);
+      setElapsedSeconds(getElapsedSeconds(startTimeRef.current, Date.now()));
     }, 1000);
 
     // 2. Message Rotator (Change message every 8 seconds)
@@ -57,6 +62,16 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel }) => {
       clearInterval(messageInterval);
       clearInterval(progressInterval);
     };
+  }, []);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setElapsedSeconds(getElapsedSeconds(startTimeRef.current, Date.now()));
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
 
   const formatTime = (totalSeconds: number) => {

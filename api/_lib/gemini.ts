@@ -3,6 +3,7 @@ import { GoogleAIFileManager } from '@google/generative-ai/server';
 import fs from 'fs';
 import path from 'path';
 import { getSystemInstruction } from './prompts.js';
+import { isPollingExpired } from './polling.js';
 
 export async function generateStudyGuide(
   apiKey: string,
@@ -33,8 +34,14 @@ export async function generateStudyGuide(
       displayName: 'Lecture Audio'
     });
 
+    const pollingStart = Date.now();
+    const maxPollingMs = Number(process.env.GEMINI_PROCESS_TIMEOUT_MS ?? 45000);
+
     let file = await fileManager.getFile(uploadResult.file.name);
     while (file.state === 'PROCESSING') {
+      if (isPollingExpired(pollingStart, Date.now(), maxPollingMs)) {
+        throw new Error('Gemini processing timed out.');
+      }
       await new Promise((resolve) => setTimeout(resolve, 2000));
       file = await fileManager.getFile(uploadResult.file.name);
     }
