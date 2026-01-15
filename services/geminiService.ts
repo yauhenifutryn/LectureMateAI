@@ -100,19 +100,43 @@ const processRequest = async (
 /**
  * Parses the raw plain text response using the strict separators.
  */
-export function parseResponseText(text: string): { studyGuide: string; transcript: string } {
+export function parseResponseText(text: string): {
+  studyGuide: string;
+  transcript: string;
+  slides?: string;
+  rawNotes?: string;
+} {
   const GUIDE_SEP = '===STUDY_GUIDE===';
   const TRANS_SEP = '===TRANSCRIPT===';
+  const SLIDES_SEP = '===SLIDES===';
+  const RAW_SEP = '===RAW_NOTES===';
 
   const guideIdx = text.indexOf(GUIDE_SEP);
   const transIdx = text.indexOf(TRANS_SEP);
+  const slidesIdx = text.indexOf(SLIDES_SEP);
+  const rawIdx = text.indexOf(RAW_SEP);
 
   let studyGuide = '';
   let transcript = '';
+  let slides: string | undefined;
+  let rawNotes: string | undefined;
 
   if (guideIdx !== -1 && transIdx !== -1) {
     studyGuide = text.substring(guideIdx + GUIDE_SEP.length, transIdx).trim();
-    transcript = text.substring(transIdx + TRANS_SEP.length).trim();
+    const transcriptEnd =
+      slidesIdx !== -1 && slidesIdx > transIdx
+        ? slidesIdx
+        : rawIdx !== -1 && rawIdx > transIdx
+          ? rawIdx
+          : text.length;
+    transcript = text.substring(transIdx + TRANS_SEP.length, transcriptEnd).trim();
+    if (slidesIdx !== -1) {
+      const slidesEnd = rawIdx !== -1 && rawIdx > slidesIdx ? rawIdx : text.length;
+      slides = text.substring(slidesIdx + SLIDES_SEP.length, slidesEnd).trim();
+    }
+    if (rawIdx !== -1) {
+      rawNotes = text.substring(rawIdx + RAW_SEP.length).trim();
+    }
   } else if (guideIdx !== -1) {
     studyGuide = text.substring(guideIdx + GUIDE_SEP.length).trim();
     transcript = 'Transcript generation was interrupted or missing.';
@@ -127,7 +151,7 @@ export function parseResponseText(text: string): { studyGuide: string; transcrip
     .replace(/```$/, '')
     .trim();
 
-  return { studyGuide, transcript };
+  return { studyGuide, transcript, slides, rawNotes };
 }
 
 export const createAnalyzeAudioLecture =

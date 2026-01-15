@@ -10,6 +10,8 @@ export enum AppStatus {
 export interface AnalysisResult {
   studyGuide: string;
   transcript: string;
+  slides?: string;
+  rawNotes?: string;
 }
 
 export interface FileData {

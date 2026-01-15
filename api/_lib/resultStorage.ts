@@ -28,7 +28,7 @@ export async function storeResultMarkdown(
 
   const pathname = buildResultFilename(sourceUrl, nowMs);
   const blob = await put(pathname, content, {
-    access: 'private',
+    access: 'public',
     contentType: 'text/markdown'
   });
 

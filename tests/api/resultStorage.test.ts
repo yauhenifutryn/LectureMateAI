@@ -16,14 +16,14 @@ describe('result storage', () => {
     expect(name).toBe('results/1700000000000-123-lecture.md');
   });
 
-  it('stores markdown with correct content type', async () => {
+  it('stores markdown with public access and correct content type', async () => {
     putMock.mockResolvedValue({ url: 'https://blob/results/test.md', pathname: 'results/test.md' });
     const url = await storeResultMarkdown('content', 'https://example.blob.vercel-storage.com/lectures/audio.mp3', 1700000000000);
     expect(url).toBe('https://blob/results/test.md');
     expect(putMock).toHaveBeenCalledWith(
       'results/1700000000000-audio.md',
       'content',
-      expect.objectContaining({ contentType: 'text/markdown' })
+      expect.objectContaining({ contentType: 'text/markdown', access: 'public' })
     );
   });
 });
