@@ -33,13 +33,35 @@ export class AccessError extends Error {
   }
 }
 
+function configureKvEnv(): void {
+  if (!process.env.KV_REST_API_URL && process.env.UPSTASH_REDIS_REST_URL) {
+    process.env.KV_REST_API_URL = process.env.UPSTASH_REDIS_REST_URL;
+  }
+  if (!process.env.KV_REST_API_TOKEN && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    process.env.KV_REST_API_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+  }
+  if (
+    !process.env.KV_REST_API_READ_ONLY_TOKEN &&
+    process.env.UPSTASH_REDIS_REST_READ_ONLY_TOKEN
+  ) {
+    process.env.KV_REST_API_READ_ONLY_TOKEN = process.env.UPSTASH_REDIS_REST_READ_ONLY_TOKEN;
+  }
+  if (!process.env.KV_REST_API_READ_ONLY_TOKEN && process.env.KV_REST_API_TOKEN) {
+    process.env.KV_REST_API_READ_ONLY_TOKEN = process.env.KV_REST_API_TOKEN;
+  }
+}
+
 export function isKvConfigured(): boolean {
+  configureKvEnv();
   return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
 }
 
 export function ensureKvConfigured(): void {
+  configureKvEnv();
   if (!isKvConfigured()) {
-    throw new Error('KV not configured. Connect the KV store to this project.');
+    throw new Error(
+      'KV not configured. Set KV_REST_API_URL/KV_REST_API_TOKEN or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN.'
+    );
   }
 }
 

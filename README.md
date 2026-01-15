@@ -22,6 +22,7 @@
 ## Access Control
 
 The app is locked by default. Enter a demo code on the landing screen, or visit `/admin` to generate codes using your `ADMIN_PASSWORD`.
+If Vercel KV is not available, install Upstash Redis and set `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN`.
 
 ## 🛠 Recommended Usage
 
