@@ -305,6 +305,16 @@ const App: React.FC = () => {
         {/* INPUT FORM - Only show when IDLE */}
         {status === AppStatus.IDLE && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-8 animate-fade-in items-stretch">
+            <div className="md:col-span-2 bg-white border border-slate-200 rounded-2xl p-5 text-sm text-slate-600">
+              <h3 className="text-sm font-semibold text-slate-800 mb-2">Quick Usage Notes</h3>
+              <ul className="space-y-1">
+                <li>Audio formats: MP3, WAV, M4A, MP4, MOV, WEBM.</li>
+                <li>Slides: Multiple PDFs are supported.</li>
+                <li>Browser recording supports system audio on desktop only, Chrome or Edge recommended.</li>
+                <li>When recording system audio, share the entire screen for best results.</li>
+                <li>Prefer third-party recording for quality, OBS Studio is recommended.</li>
+              </ul>
+            </div>
             
             {/* 1. Audio Source */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col h-full">
@@ -589,6 +599,9 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      <footer className="mt-10 text-center text-xs text-slate-400">
+        © 2026 Yauheni Futryn. All rights reserved.
+      </footer>
     </div>
   );
 };

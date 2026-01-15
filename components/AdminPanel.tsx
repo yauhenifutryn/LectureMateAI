@@ -13,10 +13,19 @@ type DemoCode = {
   remaining: number;
 };
 
+type AccessEvent = {
+  at: string;
+  mode: 'admin' | 'demo';
+  action: 'process' | 'chat';
+  code?: string;
+};
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
   const [codes, setCodes] = useState<DemoCode[]>([]);
+  const [events, setEvents] = useState<AccessEvent[]>([]);
   const [uses, setUses] = useState('3');
   const [isLoading, setIsLoading] = useState(false);
+  const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastGenerated, setLastGenerated] = useState<string | null>(null);
 
@@ -47,9 +56,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     }
   };
 
+  const loadEvents = async () => {
+    if (!adminToken) return;
+    setIsEventsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/events?limit=50', {
+        headers: { Authorization: `Bearer ${adminToken}` }
+      });
+      const data = await response.json();
+      if (response.status === 401) {
+        onAccessChange(null);
+        throw new Error(data?.error?.message || 'Unauthorized.');
+      }
+      if (!response.ok) {
+        throw new Error(data?.error?.message || 'Unable to load events.');
+      }
+      setEvents(data.events || []);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to load events.';
+      setError(message);
+    } finally {
+      setIsEventsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (adminToken) {
       loadCodes();
+      loadEvents();
     }
   }, [adminToken]);
 
@@ -78,6 +113,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
       }
       setLastGenerated(data.code);
       await loadCodes();
+      await loadEvents();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to generate code.';
       setError(message);
@@ -108,6 +144,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
         throw new Error(data?.error?.message || 'Unable to revoke code.');
       }
       await loadCodes();
+      await loadEvents();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to revoke code.';
       setError(message);
@@ -218,6 +255,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
                   >
                     Revoke
                   </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-900">Usage Log</h2>
+            <button
+              type="button"
+              onClick={loadEvents}
+              className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {isEventsLoading && events.length === 0 ? (
+            <p className="text-sm text-slate-500">Loading events...</p>
+          ) : events.length === 0 ? (
+            <p className="text-sm text-slate-500">No usage events recorded yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {events.map((event, index) => (
+                <div
+                  key={`${event.at}-${index}`}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-lg px-4 py-3 text-sm"
+                >
+                  <div>
+                    <div className="font-semibold text-slate-800">
+                      {event.mode === 'admin' ? 'Admin' : `Demo ${event.code || ''}`}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {new Date(event.at).toLocaleString()} · {event.action}
+                    </div>
+                  </div>
+                  <span className="text-xs uppercase tracking-wide text-slate-500">
+                    {event.mode}
+                  </span>
                 </div>
               ))}
             </div>
