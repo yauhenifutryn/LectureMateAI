@@ -352,6 +352,10 @@ const App: React.FC = () => {
                 <li>When recording system audio, share the entire screen for best results.</li>
                 <li>Prefer third-party recording for quality, OBS Studio is recommended.</li>
               </ul>
+              <p className="mt-3 text-xs text-slate-500">
+                Client warrants they own the copyright or have a license to the content they process. Client
+                indemnifies Yauheni Futryn against any copyright claims arising from their uploads.
+              </p>
             </div>
             
             {/* 1. Audio Source */}
