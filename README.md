@@ -54,4 +54,7 @@ If you need to record a live Zoom/Teams meeting directly from the browser:
 This source code and application are provided strictly for **demonstration, portfolio, and educational purposes**.
 
 * **No Commercial Use:** You are **not** permitted to sell, sub-license, rent, or monetize this software, its source code, or its outputs without explicit written consent from the author.
-* **No Redistribution:** inquiries or White Label partnership opportunities, please contact the author directly.
+* **No Redistribution:** You may not redistribute or repackage this repository as a white-label solution for third parties without a commercial license agreement.
+
+### Content Rights & Indemnification
+By using this application, you represent and warrant that you own the content you upload or have all necessary rights and licenses to process it. You agree to indemnify and hold harmless Yauheni Futryn from any copyright, IP, or related claims arising from your uploads or use of the generated outputs.
