@@ -4,6 +4,7 @@ import { getElapsedSeconds } from '../utils/time';
 
 interface ProcessingStateProps {
   onCancel: () => void;
+  uploadCheckpoint?: string | null;
 }
 
 const MESSAGES = [
@@ -16,7 +17,7 @@ const MESSAGES = [
   "Finalizing analysis..."
 ];
 
-const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel }) => {
+const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel, uploadCheckpoint }) => {
   const [progress, setProgress] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -100,6 +101,13 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel }) => {
         <Icons.BookOpen size={12} />
         <span>Time Elapsed: {formatTime(elapsedSeconds)}</span>
       </div>
+
+      {uploadCheckpoint && (
+        <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full text-xs font-medium text-emerald-700 mb-4 border border-emerald-100">
+          <Icons.Check size={12} />
+          <span>{uploadCheckpoint}</span>
+        </div>
+      )}
 
       {/* Progress Bar Container */}
       <div className="w-full max-w-md space-y-3">

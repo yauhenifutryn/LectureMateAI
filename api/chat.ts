@@ -13,6 +13,8 @@ type ChatMessage = {
 type ChatBody = {
   transcript?: string;
   studyGuide?: string;
+  slides?: string;
+  rawNotes?: string;
   messages?: ChatMessage[];
   demoCode?: string;
 };
@@ -40,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { transcript, studyGuide, messages, demoCode } = parseBody(req);
+    const { transcript, studyGuide, slides, rawNotes, messages, demoCode } = parseBody(req);
     if (!transcript || !studyGuide || !Array.isArray(messages) || messages.length === 0) {
       throw new Error('Missing chat payload.');
     }
@@ -53,12 +55,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await authorizeChat(req, demoCode);
 
     const ai = new GoogleGenAI({ apiKey });
+    const sourceBlocks = [
+      `Here is the verbatim transcript of the lecture I want to discuss:\n${transcript}`,
+      `Here is the Study Guide you generated:\n${studyGuide}`
+    ];
+
+    if (slides) {
+      sourceBlocks.push(`Here is the slide text provided:\n${slides}`);
+    }
+
+    if (rawNotes) {
+      sourceBlocks.push(`Here are the raw notes provided:\n${rawNotes}`);
+    }
+
     const history = [
       {
         role: 'user',
         parts: [
           {
-            text: `Here is the verbatim transcript of the lecture I want to discuss:\n${transcript}\n\nHere is the Study Guide you generated:\n${studyGuide}`
+            text: sourceBlocks.join('\n\n')
           }
         ]
       },

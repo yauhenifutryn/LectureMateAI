@@ -1,5 +1,5 @@
 import { upload } from '@vercel/blob/client';
-import type { AccessContext, ChatMessage, ChatSession } from '../types';
+import type { AccessContext, ChatMessage, ChatSession, AnalysisResult } from '../types';
 
 type UploadedFile = {
   fileUrl: string;
@@ -52,7 +52,7 @@ type AnalyzeOptions = {
 type AnalyzeDependencies = {
   uploadToBlob: (file: File) => Promise<UploadedFile>;
   processRequest: (
-    payload: { audio: UploadedFile; slides: UploadedFile[]; userContext: string },
+    payload: { audio?: UploadedFile; slides: UploadedFile[]; userContext: string },
     access?: AccessContext
   ) => Promise<ProcessResponse>;
 };
@@ -63,7 +63,7 @@ type CleanupDependencies = AnalyzeDependencies & {
 
 const processRequest = async (
   payload: {
-  audio: UploadedFile;
+  audio?: UploadedFile;
   slides: UploadedFile[];
   userContext: string;
   },
@@ -71,7 +71,7 @@ const processRequest = async (
 ): Promise<ProcessResponse> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   const bodyPayload = { ...payload } as {
-    audio: UploadedFile;
+    audio?: UploadedFile;
     slides: UploadedFile[];
     userContext: string;
     demoCode?: string;
@@ -157,26 +157,30 @@ export function parseResponseText(text: string): {
 export const createAnalyzeAudioLecture =
   ({ uploadToBlob: uploadFn, processRequest: processFn }: AnalyzeDependencies) =>
   async (
-    audioFile: File,
+    audioFile: File | null,
     slideFiles: File[],
     userContext: string,
     options?: AnalyzeOptions
-  ): Promise<{ studyGuide: string; transcript: string }> => {
-    if (!audioFile) {
-      throw new Error('Audio file is missing.');
+  ): Promise<AnalysisResult> => {
+    if (!audioFile && slideFiles.length === 0) {
+      throw new Error('Audio or slide files are required.');
     }
 
     options?.onStageChange?.('uploading');
-    const audio = await uploadFn(audioFile);
+    const audio = audioFile ? await uploadFn(audioFile) : undefined;
     const slides = await Promise.all(slideFiles.map((file) => uploadFn(file)));
-    options?.onUploadComplete?.([audio.fileUrl, ...slides.map((slide) => slide.fileUrl)]);
+    const uploadedUrls = [
+      ...(audio ? [audio.fileUrl] : []),
+      ...slides.map((slide) => slide.fileUrl)
+    ];
+    options?.onUploadComplete?.(uploadedUrls);
 
     options?.onStageChange?.('processing');
     const data = await processFn(
       {
-      audio,
-      slides,
-      userContext
+        audio,
+        slides,
+        userContext
       },
       options?.access
     );
@@ -204,11 +208,11 @@ export const createRunAnalysisWithCleanup =
     cleanupUploadedFiles: cleanupFn
   }: CleanupDependencies) =>
   async (
-    audioFile: File,
+    audioFile: File | null,
     slideFiles: File[],
     userContext: string,
     options?: AnalyzeOptions
-  ): Promise<{ studyGuide: string; transcript: string }> => {
+  ): Promise<AnalysisResult> => {
     let uploadedUrls: string[] = [];
 
     try {
@@ -262,7 +266,9 @@ export const analyzeAudioLectureWithCleanup = createRunAnalysisWithCleanup({
 export const initializeChatSession = (
   transcript: string,
   studyGuide: string,
-  access?: AccessContext
+  access?: AccessContext,
+  slides?: string,
+  rawNotes?: string
 ): ChatSession => {
   return {
     async *sendMessageStream({ history }: { message: string; history: ChatMessage[] }) {
@@ -270,11 +276,15 @@ export const initializeChatSession = (
       const payload: {
         transcript: string;
         studyGuide: string;
+        slides?: string;
+        rawNotes?: string;
         messages: { role: string; content: string }[];
         demoCode?: string;
       } = {
         transcript,
         studyGuide,
+        slides,
+        rawNotes,
         messages: history.map((msg) => ({ role: msg.role, content: msg.content }))
       };
 

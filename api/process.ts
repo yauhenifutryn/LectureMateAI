@@ -51,12 +51,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     await authorizeProcess(req, demoCode);
 
-    if (!audio?.fileUrl || !audio?.mimeType) {
-      throw new Error('Missing audio payload.');
+    if ((!audio || !audio.fileUrl || !audio.mimeType) && slides.length === 0) {
+      throw new Error('Missing audio or slide payload.');
     }
 
-    validateBlobUrl(audio.fileUrl, blobPrefix);
-    blobUrls.push(audio.fileUrl);
+    if (audio?.fileUrl) {
+      validateBlobUrl(audio.fileUrl, blobPrefix);
+      blobUrls.push(audio.fileUrl);
+    }
 
     slides.forEach((slide) => {
       validateBlobUrl(slide.fileUrl, blobPrefix);
@@ -67,15 +69,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     userContext || 'None provided.'
   }\n\nUser request: include transcript, slides, and raw notes verbatim. Use SOURCE_APPENDIX_MODE.\n\nGenerate the output using the strict separators defined in the System Instructions.`;
 
-    const fullText = await generateStudyGuide(
-      apiKey,
-      audio.fileUrl,
-      audio.mimeType,
-      promptText
-    );
+    const fullText = await generateStudyGuide(apiKey, {
+      audio: audio?.fileUrl && audio?.mimeType ? audio : undefined,
+      slides,
+      userContext: promptText
+    });
 
+    const resultSourceUrl = audio?.fileUrl ?? slides[0]?.fileUrl;
     try {
-      await storeResultMarkdown(fullText, audio.fileUrl);
+      await storeResultMarkdown(fullText, resultSourceUrl);
     } catch (error) {
       console.error('Result storage failed:', error);
     }

@@ -16,6 +16,7 @@ import AccessGate from './components/AccessGate';
 import AdminPanel from './components/AdminPanel';
 import { shouldEnableUploadWaveform } from './utils/waveformPolicy';
 import { getAnalysisStartState } from './utils/analysisState';
+import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
@@ -33,6 +34,7 @@ const App: React.FC = () => {
   const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
   const [userContext, setUserContext] = useState('');
   const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
+  const [uploadCheckpoint, setUploadCheckpoint] = useState<string | null>(null);
   
   // Output
   const [result, setResult] = useState<AnalysisResult | null>(null);
@@ -49,6 +51,7 @@ const App: React.FC = () => {
   const [accessError, setAccessError] = useState<string | null>(null);
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
+  const audioRequired = slideFiles.length === 0;
 
   const handleAuthorize = (next: AccessContext) => {
     setAccess(next);
@@ -137,7 +140,13 @@ const App: React.FC = () => {
   useEffect(() => {
     if (result && access && !chatSessionRef.current) {
       try {
-        chatSessionRef.current = initializeChatSession(result.transcript, result.studyGuide, access);
+        chatSessionRef.current = initializeChatSession(
+          result.transcript,
+          result.studyGuide,
+          access,
+          result.slides,
+          result.rawNotes
+        );
       } catch (e) {
         console.error("Failed to init chat", e);
       }
@@ -170,8 +179,8 @@ const App: React.FC = () => {
   };
 
   const handleGenerate = async () => {
-    if (!audioFile) {
-      setError("Please provide an audio recording of the lecture.");
+    if (!audioFile && slideFiles.length === 0) {
+      setError("Please provide audio or slide files to analyze.");
       return;
     }
 
@@ -180,21 +189,26 @@ const App: React.FC = () => {
       setResult(startState.result);
       setActiveTab(startState.activeTab);
       setError(startState.error);
+      setUploadCheckpoint(null);
 
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
-      const analysis = await analyzeAudioLectureWithCleanup(audioFile.file, slides, userContext, {
+      const analysis = await analyzeAudioLectureWithCleanup(audioFile?.file || null, slides, userContext, {
         onStageChange: (stage) => {
           if (stage === 'processing') {
             setStatus(AppStatus.PROCESSING);
           }
         },
-        onUploadComplete: (urls) => setPendingBlobUrls(urls),
+        onUploadComplete: (urls) => {
+          setPendingBlobUrls(urls);
+          setUploadCheckpoint(formatUploadCheckpoint(urls.length));
+        },
         access: access || undefined
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
       setPendingBlobUrls([]);
+      setUploadCheckpoint(null);
       setChatMessages([]);
       chatSessionRef.current = null; 
     } catch (err: any) {
@@ -212,6 +226,7 @@ const App: React.FC = () => {
       }
       setError(message);
       setStatus(AppStatus.ERROR);
+      setUploadCheckpoint(null);
     }
   };
 
@@ -363,7 +378,7 @@ const App: React.FC = () => {
               <div className="flex items-center justify-between mb-6">
                 <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
                   <Icons.FileAudio size={20} className="text-primary-600" />
-                  Lecture Recording <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full uppercase tracking-wider">Required</span>
+                  Lecture Recording <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${audioRequired ? 'text-red-600 bg-red-50' : 'text-slate-600 bg-slate-100'}`}>{audioRequired ? 'Required' : 'Optional'}</span>
                 </h3>
                 {!audioFile && (
                   <div className="flex bg-slate-100 rounded-lg p-1 h-9 items-center">
@@ -506,10 +521,10 @@ const App: React.FC = () => {
             <div className="md:col-span-2">
               <button
                 onClick={handleGenerate}
-                disabled={!audioFile}
+                disabled={!audioFile && slideFiles.length === 0}
                 className={`
                   w-full py-4 px-6 rounded-xl font-bold text-lg flex items-center justify-center gap-3 transition-all shadow-lg
-                  ${audioFile 
+                  ${audioFile || slideFiles.length > 0
                     ? 'bg-gradient-to-r from-primary-600 to-primary-700 text-white hover:shadow-xl hover:-translate-y-0.5' 
                     : 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200'}
                 `}
@@ -523,7 +538,7 @@ const App: React.FC = () => {
 
         {/* Processing State */}
         {(status === AppStatus.UPLOADING || status === AppStatus.PROCESSING) && (
-          <ProcessingState onCancel={handleCancelProcessing} />
+          <ProcessingState onCancel={handleCancelProcessing} uploadCheckpoint={uploadCheckpoint} />
         )}
 
         {/* Results View */}
@@ -538,7 +553,12 @@ const App: React.FC = () => {
                 <div>
                   <h2 className="text-2xl font-serif font-bold text-slate-900">Analysis Result</h2>
                   <p className="text-slate-500 text-sm">
-                    {slideFiles.length > 0 ? `Based on audio & ${slideFiles.length} slides` : 'Based on audio analysis'}
+                    {audioFile && slideFiles.length > 0
+                      ? `Based on audio & ${slideFiles.length} slides`
+                      : audioFile
+                        ? 'Based on audio analysis'
+                        : `Based on ${slideFiles.length} slide${slideFiles.length === 1 ? '' : 's'}`
+                    }
                   </p>
                 </div>
                 <div className="flex items-center gap-3">
