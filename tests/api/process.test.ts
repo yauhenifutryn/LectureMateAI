@@ -1,14 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import handler from '../../api/process';
-import { generateStudyGuide } from '../../api/_lib/gemini';
-import { storeResultMarkdown } from '../../api/_lib/resultStorage';
-
-vi.mock('../../api/_lib/gemini', () => ({
-  generateStudyGuide: vi.fn(async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript')
-}));
+import { validateBlobUrl } from '../../api/_lib/validateBlobUrl';
+import { setJobRecord } from '../../api/_lib/jobStore';
 
 vi.mock('../../api/_lib/access', () => ({
-  authorizeProcess: vi.fn(async () => {}),
+  authorizeProcess: vi.fn(async () => ({ mode: 'demo', code: 'DEMO123' })),
   AccessError: class AccessError extends Error {
     status = 401;
     code = 'unauthorized';
@@ -19,16 +15,13 @@ vi.mock('../../api/_lib/validateBlobUrl', () => ({
   validateBlobUrl: vi.fn()
 }));
 
-vi.mock('../../api/_lib/blobCleanup', () => ({
-  cleanupBlobUrls: vi.fn(async () => {})
+vi.mock('../../api/_lib/jobStore', () => ({
+  buildJobId: () => 'job-123',
+  setJobRecord: vi.fn(async () => {})
 }));
 
-vi.mock('../../api/_lib/prompts', () => ({
-  getSystemInstruction: () => 'prompt'
-}));
-
-vi.mock('../../api/_lib/resultStorage', () => ({
-  storeResultMarkdown: vi.fn(async () => null)
+vi.mock('../../api/_lib/errors', () => ({
+  toPublicError: () => ({ code: 'internal_error', message: 'Processing failed.' })
 }));
 
 const buildRes = () => {
@@ -40,14 +33,11 @@ const buildRes = () => {
 
 describe('process handler', () => {
   beforeEach(() => {
-    process.env.GEMINI_API_KEY = 'test-key';
+    vi.mocked(validateBlobUrl).mockReset();
+    vi.mocked(setJobRecord).mockReset();
   });
 
-  afterEach(() => {
-    delete process.env.GEMINI_API_KEY;
-  });
-
-  it('passes audio and slides to generateStudyGuide', async () => {
+  it('validates audio and slide blob urls', async () => {
     const req = {
       method: 'POST',
       body: {
@@ -60,13 +50,9 @@ describe('process handler', () => {
     const res = buildRes();
     await handler(req, res);
 
-    expect(vi.mocked(generateStudyGuide)).toHaveBeenCalledWith(
-      'test-key',
-      expect.objectContaining({
-        audio: expect.objectContaining({ mimeType: 'audio/mpeg' }),
-        slides: expect.arrayContaining([expect.objectContaining({ mimeType: 'application/pdf' })])
-      })
-    );
+    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/audio.mp3', undefined);
+    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/slide.pdf', undefined);
+    expect(vi.mocked(setJobRecord)).toHaveBeenCalledOnce();
   });
 
   it('allows slides-only requests', async () => {
@@ -81,16 +67,7 @@ describe('process handler', () => {
     const res = buildRes();
     await handler(req, res);
 
-    expect(vi.mocked(generateStudyGuide)).toHaveBeenCalledWith(
-      'test-key',
-      expect.objectContaining({
-        audio: undefined,
-        slides: expect.arrayContaining([expect.objectContaining({ mimeType: 'application/pdf' })])
-      })
-    );
-    expect(vi.mocked(storeResultMarkdown)).toHaveBeenCalledWith(
-      expect.any(String),
-      'https://blob/slide.pdf'
-    );
+    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/slide.pdf', undefined);
+    expect(vi.mocked(setJobRecord)).toHaveBeenCalledOnce();
   });
 });
