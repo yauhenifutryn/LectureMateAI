@@ -21,15 +21,28 @@ You have superpowers. Superpowers teach you new skills and capabilities. RIGHT N
 **CRITICAL:** You must maintain a single **Continuity Ledger** for this workspace in `./CONTINUITY.md`. This ledger is the canonical session briefing designed to survive context compaction.
 
 ### Protocol
-1.  **Start of Turn:** Before generating code or answers, read `./CONTINUITY.md`. Update your internal context with the latest goal, constraints, decisions, and state.
+1.  **Start of Turn:** Before generating code or answers, read `./CONTINUITY.md` and `./PROJECT_LOG.md` if it exists. Update your internal context with the latest goal, constraints, decisions, and state.
 2.  **During Turn:** Update `./CONTINUITY.md` immediately whenever any of the following change:
     * Goal or success criteria.
     * Constraints or assumptions.
     * Key technical decisions.
     * Progress state (Done/Now/Next).
     * Important tool outcomes or discoveries.
-3.  **Compaction Recovery:** If you detect a context flush or summary event, rebuild the ledger from visible context. Mark gaps as `UNCONFIRMED`. Ask 1-3 targeted questions to restore integrity.
-4.  **Consistency:** Keep the ledger factual and concise (bullets preferred). Do not include chat transcripts.
+3.  **End of Turn:** After any meaningful action, append a short entry to `./PROJECT_LOG.md`.
+4.  **Compaction Recovery:** If you detect a context flush or summary event, rebuild the ledger from visible context. Mark gaps as `UNCONFIRMED`. Ask 1-3 targeted questions to restore integrity.
+5.  **Consistency:** Keep the ledger factual and concise (bullets preferred). Do not include chat transcripts.
+
+### Project Log (Historical Context)
+**CRITICAL:** Maintain a chronological project log in `./PROJECT_LOG.md` for cross-session continuity. This is a lightweight history file, not a live state file.
+
+**Rules:**
+* Add a short entry whenever a meaningful action or decision occurs.
+* Include: date, summary, key files touched, verification, and notes.
+* Keep entries factual and brief, no chat transcripts.
+* If code was edited or a deploy/test was run, a PROJECT_LOG entry is mandatory.
+
+## 6. UI Trinity Router (Conditional)
+**CRITICAL:** UI Trinity rules are only activated when UI work is explicitly involved. If active, follow `~/.codex/UI_TRINITY_ROUTER.md` and then the repo-local `UI_TRINITY.md`.
 
 ### Interaction Model
 * **Snapshot:** Begin meaningful replies with a brief "Ledger Snapshot" (Goal + Now/Next + Open Questions).
