@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import handler from '../../api/process/run';
+import handler from '../../api/process';
 import { buildJobId, getJobRecord, setJobRecord } from '../../api/_lib/jobStore';
 import { generateStudyGuide } from '../../api/_lib/gemini';
 import { storeResultMarkdown } from '../../api/_lib/resultStorage';
@@ -88,7 +88,7 @@ describe('process run endpoint', () => {
   });
 
   it('returns 404 when job missing', async () => {
-    const req = createReq({ body: { jobId: 'missing', demoCode: 'DEMO123' } });
+    const req = createReq({ body: { action: 'run', jobId: 'missing', demoCode: 'DEMO123' } });
     const res = createRes();
 
     await handler(req, res);
@@ -100,7 +100,7 @@ describe('process run endpoint', () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
 
-    const req = createReq({ body: { jobId, demoCode: 'WRONG' } });
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'WRONG' } });
     const res = createRes();
 
     await handler(req, res);
@@ -112,7 +112,7 @@ describe('process run endpoint', () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
 
-    const req = createReq({ body: { jobId, demoCode: 'demo123' } });
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
     const res = createRes();
 
     await handler(req, res);

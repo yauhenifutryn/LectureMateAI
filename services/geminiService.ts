@@ -127,10 +127,10 @@ const startJobRequest = async (jobId: string, access?: AccessContext): Promise<v
     bodyPayload.demoCode = access.token;
   }
 
-  const response = await fetch('/api/process/run', {
+  const response = await fetch('/api/process', {
     method: 'POST',
     headers,
-    body: JSON.stringify(bodyPayload)
+    body: JSON.stringify({ ...bodyPayload, action: 'run' })
   });
 
   if (!response.ok) {
@@ -149,7 +149,7 @@ const getJobStatusRequest = async (
     params.set('demoCode', access.token);
   }
 
-  const response = await fetch(`/api/process/status?${params.toString()}`, {
+  const response = await fetch(`/api/process?${params.toString()}`, {
     method: 'GET',
     headers
   });

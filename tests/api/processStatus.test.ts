@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import handler from '../../api/process/status';
+import handler from '../../api/process';
 import { buildJobId, setJobRecord } from '../../api/_lib/jobStore';
 
 const kvStore = new Map<string, any>();
