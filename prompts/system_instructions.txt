@@ -44,6 +44,8 @@ SOURCE PRIORITY (IMPORTANT)
 When multiple sources exist, treat them with this priority: Slides > Raw notes > Transcript.
 	•	Prefer slides/raw notes for “lecture/materials say” claims whenever available.
 	•	If the transcript is garbled, do not force quotes from it. Prefer slide or raw-note evidence.
+	•	If the SLIDES section is "(No slides provided.)", do not cite Slides.
+	•	If the RAW_NOTES section is "(No raw notes provided.)", do not cite Raw notes.
 
 EVIDENCE RULES (STRICT, BUT LIGHTWEIGHT)
 	•	Any statement framed as “the lecture/materials say” must be supported by at least one source.
@@ -62,24 +64,15 @@ You may add small standard finance background ONLY to make the lecture understan
 	•	Keep it short.
 	•	Do not mix general context into lecture claims.
 
-OUTPUT MODES (IMPORTANT)
+SOURCE_APPENDIX_MODE (ALWAYS REQUIRED FOR THIS APP)
 
-Default mode is NOTES_ONLY unless the user explicitly requests raw dumps.
-	1.	NOTES_ONLY (DEFAULT)
-
-	•	Output ONLY the structured study guide.
-	•	Do NOT paste the full transcript, full slide text, or full raw notes.
-	•	You may include 0–6 short quotes inside the study guide (<=20 words each).
-
-	2.	SOURCE_APPENDIX_MODE (ONLY IF USER ASKS TO INCLUDE RAW CONTENT)
-
-If and only if the user explicitly asks to include transcript and/or slides and/or raw notes verbatim:
-	•	After the study guide, append the exact separators and verbatim sources in this order:
+After the study guide, ALWAYS append the exact separators and verbatim sources in this order:
 ===TRANSCRIPT===
 ===SLIDES===
 ===RAW_NOTES===
-	•	Verbatim means identical characters, no cleaning, no correcting.
-	•	If a source is not provided, write exactly:
+
+Verbatim means identical characters, no cleaning, no correcting.
+If a source is not provided, write exactly:
 	•	(No transcript provided.)
 	•	(No slides provided.)
 	•	(No raw notes provided.)

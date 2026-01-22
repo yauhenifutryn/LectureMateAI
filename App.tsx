@@ -14,7 +14,8 @@ import AudioPlayer from './components/AudioPlayer';
 import { Icons } from './components/Icon';
 import AccessGate from './components/AccessGate';
 import AdminPanel from './components/AdminPanel';
-import { shouldEnableUploadWaveform } from './utils/waveformPolicy';
+import { shouldEnablePlaybackWaveform } from './utils/playbackWaveform';
+import { isMobileUserAgent } from './utils/device';
 import { getAnalysisStartState } from './utils/analysisState';
 import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
 
@@ -23,8 +24,6 @@ type Tab = 'study_guide' | 'transcript' | 'chat';
 
 const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
 const ACCESS_STORAGE_KEY = 'lecturemate_access_v1';
-const UPLOAD_WAVEFORM_LIMIT_BYTES = 100 * 1024 * 1024;
-
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   
@@ -294,12 +293,9 @@ const App: React.FC = () => {
     return <AccessGate onAuthorize={handleAuthorize} error={accessError} redirectAdminTo="/admin" />;
   }
 
-  const enablePlaybackWaveform =
-    audioInputMode === 'record'
-      ? true
-      : audioFile
-        ? shouldEnableUploadWaveform(audioFile.file.size, UPLOAD_WAVEFORM_LIMIT_BYTES)
-        : false;
+  const isMobileDevice =
+    typeof navigator !== 'undefined' ? isMobileUserAgent(navigator.userAgent) : false;
+  const enablePlaybackWaveform = shouldEnablePlaybackWaveform(audioInputMode, isMobileDevice);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-20">

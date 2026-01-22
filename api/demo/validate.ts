@@ -24,6 +24,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: { code: 'missing_code', message: 'Code required.' } });
     }
 
+    const adminPassword = process.env.ADMIN_PASSWORD || '';
+    if (adminPassword && code === adminPassword) {
+      return res.status(200).json({ mode: 'admin' });
+    }
+
     const remaining = await validateDemoCode(code);
     if (remaining === null) {
       return res
@@ -32,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     await recordDemoValidation(code);
-    return res.status(200).json({ remaining });
+    return res.status(200).json({ remaining, mode: 'demo' });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });

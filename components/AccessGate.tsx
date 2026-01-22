@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import type { AccessContext, AccessMode } from '../types';
 import { Icons } from './Icon';
+import { resolveAccessMode } from '../utils/accessMode';
 
 type AccessGateProps = {
   onAuthorize: (access: AccessContext) => void;
@@ -31,6 +32,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
     setIsSubmitting(true);
     setLocalError(null);
     try {
+      let resolvedMode: AccessMode = mode;
       if (mode === 'admin') {
         const response = await fetch('/api/admin/verify', {
           method: 'POST',
@@ -50,13 +52,14 @@ const AccessGate: React.FC<AccessGateProps> = ({
         if (!response.ok) {
           throw new Error(data?.error?.message || 'Invalid demo code.');
         }
+        resolvedMode = resolveAccessMode(mode, data?.mode);
       }
 
-      onAuthorize({ mode, token: trimmed });
-      if (mode === 'admin' && redirectAdminTo && typeof window !== 'undefined') {
+      onAuthorize({ mode: resolvedMode, token: trimmed });
+      if (resolvedMode === 'admin' && mode === 'admin' && redirectAdminTo && typeof window !== 'undefined') {
         window.location.assign(redirectAdminTo);
       }
-      if (mode === 'demo' && redirectDemoTo && typeof window !== 'undefined') {
+      if (resolvedMode === 'demo' && mode === 'demo' && redirectDemoTo && typeof window !== 'undefined') {
         window.location.assign(redirectDemoTo);
       }
     } catch (err) {
