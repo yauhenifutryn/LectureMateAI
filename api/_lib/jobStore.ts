@@ -44,6 +44,19 @@ export type JobRecord = {
 
 const JOB_PREFIX = 'job:';
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
+const KV_RETRY_ATTEMPTS = 2;
+
+async function withKvRetry<T>(operation: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < KV_RETRY_ATTEMPTS; attempt += 1) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
 
 export function getJobKey(jobId: string): string {
   return `${JOB_PREFIX}${jobId}`;
@@ -64,12 +77,12 @@ export function getJobTtlSeconds(): number {
 
 export async function setJobRecord(job: JobRecord): Promise<void> {
   ensureKvConfigured();
-  await kv.set(getJobKey(job.id), job, { ex: getJobTtlSeconds() });
+  await withKvRetry(() => kv.set(getJobKey(job.id), job, { ex: getJobTtlSeconds() }));
 }
 
 export async function getJobRecord(jobId: string): Promise<JobRecord | null> {
   ensureKvConfigured();
-  return (await kv.get<JobRecord>(getJobKey(jobId))) ?? null;
+  return (await withKvRetry(() => kv.get<JobRecord>(getJobKey(jobId)))) ?? null;
 }
 
 export async function updateJobRecord(

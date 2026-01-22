@@ -130,4 +130,20 @@ describe('process run endpoint', () => {
       expect.any(Object)
     );
   });
+
+  it('logs errors when processing fails', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateStudyGuide).mockRejectedValueOnce(new Error('boom'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(500);
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });

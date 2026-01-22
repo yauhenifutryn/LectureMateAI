@@ -95,6 +95,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     }
+    console.error('Process create failed:', error);
     const publicError = toPublicError(error);
     return res.status(500).json({ error: publicError });
   }
@@ -181,6 +182,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     }
+    console.error('Process run failed:', error);
     const publicError = toPublicError(error);
     try {
       await updateJobRecord(jobId, {
