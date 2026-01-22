@@ -3,6 +3,7 @@ import { GoogleAIFileManager } from '@google/generative-ai/server';
 import fs from 'fs';
 import path from 'path';
 import { getSystemInstruction } from './prompts.js';
+import { buildPrompt } from './promptBuilder.js';
 import { isPollingExpired } from './polling.js';
 
 type FilePayload = {
@@ -110,10 +111,15 @@ export async function generateStudyGuide(apiKey: string, input: StudyInput) {
       }
     }));
 
-    const result = await model.generateContent([
-      ...parts,
-      { text: input.userContext || getSystemInstruction() }
-    ]);
+    const prompt = buildPrompt({
+      systemPrompt: getSystemInstruction(),
+      userContext: input.userContext,
+      hasAudio: Boolean(input.audio),
+      hasSlides: uploaded.length > 0 && (input.slides || []).length > 0,
+      hasRawNotes: false
+    });
+
+    const result = await model.generateContent([...parts, { text: prompt }]);
 
     return result.response.text();
   } finally {

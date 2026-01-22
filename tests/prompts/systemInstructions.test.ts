@@ -16,4 +16,13 @@ describe('system_instructions.txt', () => {
 
     expect(prompt).toContain('If the SLIDES section is "(No slides provided.)", do not cite Slides.');
   });
+
+  it('forces transcript-only sources when no slides or notes exist', () => {
+    const promptPath = path.join(process.cwd(), 'prompts', 'system_instructions.txt');
+    const prompt = fs.readFileSync(promptPath, 'utf8');
+
+    expect(prompt).toContain(
+      'If SLIDES and RAW_NOTES are both missing, all Evidence Snapshot sources must be Transcript.'
+    );
+  });
 });
