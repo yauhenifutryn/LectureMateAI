@@ -15,7 +15,7 @@ describe('buildPrompt', () => {
     expect(prompt).toContain('Focus on leverage.');
   });
 
-  it('requires transcript sources when audio only', () => {
+  it('lists transcript as the only allowed source when audio only', () => {
     const prompt = buildPrompt({
       systemPrompt: 'SYSTEM',
       hasAudio: true,
@@ -23,10 +23,10 @@ describe('buildPrompt', () => {
       hasRawNotes: false
     });
 
-    expect(prompt).toContain('Evidence Snapshot sources must be Transcript');
+    expect(prompt).toContain('Allowed Evidence Snapshot sources: Transcript.');
   });
 
-  it('requires slide sources when slides only', () => {
+  it('lists slides as the only allowed source when slides only', () => {
     const prompt = buildPrompt({
       systemPrompt: 'SYSTEM',
       hasAudio: false,
@@ -34,10 +34,10 @@ describe('buildPrompt', () => {
       hasRawNotes: false
     });
 
-    expect(prompt).toContain('Evidence Snapshot sources must be Slides');
+    expect(prompt).toContain('Allowed Evidence Snapshot sources: Slides.');
   });
 
-  it('allows transcript or slides when both exist', () => {
+  it('lists transcript and slides when both exist', () => {
     const prompt = buildPrompt({
       systemPrompt: 'SYSTEM',
       hasAudio: true,
@@ -45,6 +45,6 @@ describe('buildPrompt', () => {
       hasRawNotes: false
     });
 
-    expect(prompt).toContain('Evidence Snapshot sources must be Transcript or Slides');
+    expect(prompt).toContain('Allowed Evidence Snapshot sources: Transcript, Slides.');
   });
 });

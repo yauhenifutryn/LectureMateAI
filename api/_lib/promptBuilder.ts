@@ -6,7 +6,14 @@ type PromptInputs = {
   hasRawNotes: boolean;
 };
 
-export function buildSourceDirective(inputs: Pick<PromptInputs, 'hasAudio' | 'hasSlides' | 'hasRawNotes'>): string {
+export function buildSourceDirective(
+  inputs: Pick<PromptInputs, 'hasAudio' | 'hasSlides' | 'hasRawNotes'>
+): string {
+  const allowedSources: string[] = [];
+  if (inputs.hasAudio) allowedSources.push('Transcript');
+  if (inputs.hasSlides) allowedSources.push('Slides');
+  if (inputs.hasRawNotes) allowedSources.push('Raw notes');
+
   const lines = [
     'SOURCE AVAILABILITY (RUNTIME)',
     inputs.hasAudio
@@ -20,14 +27,9 @@ export function buildSourceDirective(inputs: Pick<PromptInputs, 'hasAudio' | 'ha
       : 'Raw notes source: not provided. Use "(No raw notes provided.)" and do not cite Raw notes.'
   ];
 
-  if (inputs.hasAudio && !inputs.hasSlides && !inputs.hasRawNotes) {
-    lines.push('Evidence Snapshot sources must be Transcript.');
-  } else if (!inputs.hasAudio && inputs.hasSlides && !inputs.hasRawNotes) {
-    lines.push('Evidence Snapshot sources must be Slides.');
-  } else if (!inputs.hasAudio && !inputs.hasSlides && inputs.hasRawNotes) {
-    lines.push('Evidence Snapshot sources must be Raw notes.');
-  } else if (inputs.hasAudio && inputs.hasSlides) {
-    lines.push('Evidence Snapshot sources must be Transcript or Slides, never a missing source.');
+  if (allowedSources.length > 0) {
+    lines.push(`Allowed Evidence Snapshot sources: ${allowedSources.join(', ')}.`);
+    lines.push('Do not use any other source labels.');
   }
 
   return lines.join('\n');

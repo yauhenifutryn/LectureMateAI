@@ -46,7 +46,7 @@ When multiple sources exist, treat them with this priority: Slides > Raw notes >
 	•	If the transcript is garbled, do not force quotes from it. Prefer slide or raw-note evidence.
 	•	If the SLIDES section is "(No slides provided.)", do not cite Slides.
 	•	If the RAW_NOTES section is "(No raw notes provided.)", do not cite Raw notes.
-	•	If SLIDES and RAW_NOTES are both missing, all Evidence Snapshot sources must be Transcript.
+	•	Evidence Snapshot sources must use only sources marked as provided in SOURCE AVAILABILITY (RUNTIME).
 
 EVIDENCE RULES (STRICT, BUT LIGHTWEIGHT)
 	•	Any statement framed as “the lecture/materials say” must be supported by at least one source.
