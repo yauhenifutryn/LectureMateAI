@@ -70,4 +70,22 @@ describe('process handler', () => {
     expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/slide.pdf', undefined);
     expect(vi.mocked(setJobRecord)).toHaveBeenCalledOnce();
   });
+
+  it('stores allowed modelId in the job request', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
+        slides: [],
+        userContext: 'ctx',
+        modelId: 'gemini-2.5-pro'
+      }
+    } as any;
+
+    const res = buildRes();
+    await handler(req, res);
+
+    const call = vi.mocked(setJobRecord).mock.calls[0]?.[0] as any;
+    expect(call?.request?.modelId).toBe('gemini-2.5-pro');
+  });
 });

@@ -59,12 +59,13 @@ type AnalyzeOptions = {
   onStageChange?: (stage: AnalyzeStage) => void;
   onUploadComplete?: (urls: string[]) => void;
   access?: AccessContext;
+  modelId?: string;
 };
 
 type AnalyzeDependencies = {
   uploadToBlob: (file: File) => Promise<UploadedFile>;
   createJob: (
-    payload: { audio?: UploadedFile; slides: UploadedFile[]; userContext: string },
+    payload: { audio?: UploadedFile; slides: UploadedFile[]; userContext: string; modelId?: string },
     access?: AccessContext
   ) => Promise<JobCreateResponse>;
   startJob: (jobId: string, access?: AccessContext) => Promise<void>;
@@ -90,6 +91,7 @@ const createJobRequest = async (
     audio?: UploadedFile;
     slides: UploadedFile[];
     userContext: string;
+    modelId?: string;
   },
   access?: AccessContext
 ): Promise<JobCreateResponse> => {
@@ -98,6 +100,7 @@ const createJobRequest = async (
     audio?: UploadedFile;
     slides: UploadedFile[];
     userContext: string;
+    modelId?: string;
     demoCode?: string;
   };
 
@@ -284,7 +287,8 @@ export const createAnalyzeAudioLecture =
       {
         audio,
         slides,
-        userContext
+        userContext,
+        modelId: options?.modelId
       },
       options?.access
     );

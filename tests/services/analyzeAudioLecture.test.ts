@@ -141,4 +141,42 @@ describe('analyzeAudioLecture', () => {
 
     await expect(analyze(fakeFile, [], 'context')).rejects.toThrow('Unauthorized');
   });
+
+  it('passes selected modelId to job creation', async () => {
+    const payloads: any[] = [];
+    const fakeUpload = async (file: File) => ({
+      fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+      mimeType: file.type || 'audio/mpeg'
+    });
+    const createJob = vi.fn().mockImplementation(async (payload: any) => {
+      payloads.push(payload);
+      return { jobId: 'job-1' };
+    });
+    const startJob = vi.fn().mockResolvedValue(undefined);
+    const getJobStatus = vi.fn().mockResolvedValue({
+      status: 'completed',
+      resultUrl: 'https://blob/result.md'
+    });
+    const fetchResultText = vi
+      .fn()
+      .mockResolvedValue('===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript');
+
+    const analyze = createAnalyzeAudioLecture({
+      uploadToBlob: fakeUpload,
+      createJob,
+      startJob,
+      getJobStatus,
+      fetchResultText,
+      sleep: async () => {}
+    });
+
+    const fakeAudio = { name: 'audio.mp3', type: 'audio/mpeg' } as File;
+
+    await analyze(fakeAudio, [], 'context', {
+      modelId: 'gemini-2.5-pro'
+    });
+
+    expect(payloads).toHaveLength(1);
+    expect(payloads[0].modelId).toBe('gemini-2.5-pro');
+  });
 });

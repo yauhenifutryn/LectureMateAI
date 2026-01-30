@@ -32,6 +32,7 @@ const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<FileData | null>(null);
   const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
   const [userContext, setUserContext] = useState('');
+  const [modelId, setModelId] = useState<'gemini-2.5-flash' | 'gemini-2.5-pro'>('gemini-2.5-flash');
   const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
   const [uploadCheckpoint, setUploadCheckpoint] = useState<string | null>(null);
   
@@ -202,7 +203,8 @@ const App: React.FC = () => {
           setPendingBlobUrls(urls);
           setUploadCheckpoint(formatUploadCheckpoint(urls.length));
         },
-        access: access || undefined
+        access: access || undefined,
+        modelId
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
@@ -499,7 +501,41 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            {/* 3. User Context */}
+            {/* 3. Model Selection */}
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+              <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-base">
+                <Icons.Sparkles size={20} className="text-primary-600" />
+                Model Selection <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Manual</span>
+              </h3>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setModelId('gemini-2.5-flash')}
+                  className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
+                    modelId === 'gemini-2.5-flash'
+                      ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Fast</div>
+                  <div className="text-xs text-slate-500">Gemini 2.5 Flash. Best speed for most lectures.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setModelId('gemini-2.5-pro')}
+                  className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
+                    modelId === 'gemini-2.5-pro'
+                      ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Pro</div>
+                  <div className="text-xs text-slate-500">Gemini 2.5 Pro. Higher quality, slower.</div>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. User Context */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
                <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-base">
                 <Icons.BookOpen size={20} className="text-primary-600" />

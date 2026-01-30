@@ -31,6 +31,7 @@ export type JobRecord = {
     audio?: FilePayload;
     slides: FilePayload[];
     userContext?: string;
+    modelId?: string;
   };
   access: JobAccess;
   createdAt: string;

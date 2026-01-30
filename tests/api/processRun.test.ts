@@ -146,4 +146,25 @@ describe('process run endpoint', () => {
     expect(errorSpy).toHaveBeenCalled();
     errorSpy.mockRestore();
   });
+
+  it('passes modelId from job request to generateStudyGuide', async () => {
+    const jobId = buildJobId();
+    await setJobRecord({
+      ...buildJob(jobId),
+      request: {
+        ...buildJob(jobId).request,
+        modelId: 'gemini-2.5-pro'
+      }
+    });
+
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(vi.mocked(generateStudyGuide)).toHaveBeenCalledWith(
+      'test-key',
+      expect.objectContaining({ modelId: 'gemini-2.5-pro' })
+    );
+  });
 });

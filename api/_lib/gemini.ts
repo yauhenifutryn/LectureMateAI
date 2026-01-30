@@ -15,6 +15,7 @@ type StudyInput = {
   audio?: FilePayload;
   slides?: FilePayload[];
   userContext?: string;
+  modelId?: string;
 };
 
 type UploadedFile = {
@@ -22,6 +23,12 @@ type UploadedFile = {
   mimeType: string;
   fileUri: string;
 };
+
+const DEFAULT_MODEL_ID = 'gemini-2.5-flash';
+const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
+
+const resolveModelId = (modelId?: string) =>
+  modelId && ALLOWED_MODELS.has(modelId) ? modelId : DEFAULT_MODEL_ID;
 
 const buildTempPath = (mimeType?: string) => {
   const ext = mimeType?.split('/')[1] || 'bin';
@@ -103,7 +110,7 @@ export async function generateStudyGuide(apiKey: string, input: StudyInput) {
       uploaded.push(upload);
     }
 
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-exp' });
+    const model = genAI.getGenerativeModel({ model: resolveModelId(input.modelId) });
     const parts = uploaded.map((file) => ({
       fileData: {
         mimeType: file.mimeType,

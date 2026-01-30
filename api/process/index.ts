@@ -29,8 +29,11 @@ type ProcessBody = {
   audio?: FilePayload;
   slides?: FilePayload[];
   userContext?: string;
+  modelId?: string;
   demoCode?: string;
 };
+
+const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
 
 function parseBody(req: VercelRequest): ProcessBody {
   if (!req.body) return {};
@@ -51,7 +54,7 @@ function buildPreview(text: string, maxChars = 2000): string {
 }
 
 async function handleCreate(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
-  const { audio, slides = [], userContext, demoCode } = body;
+  const { audio, slides = [], userContext, demoCode, modelId } = body;
   const blobPrefix = process.env.BLOB_URL_PREFIX;
 
   try {
@@ -79,7 +82,8 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
       request: {
         audio: audio?.fileUrl && audio?.mimeType ? audio : undefined,
         slides,
-        userContext
+        userContext,
+        modelId: modelId && ALLOWED_MODELS.has(modelId) ? modelId : undefined
       },
       access: {
         mode: access.mode,
@@ -148,7 +152,8 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
     const resultText = await generateStudyGuide(apiKey, {
       audio: job.request.audio,
       slides: job.request.slides,
-      userContext: job.request.userContext
+      userContext: job.request.userContext,
+      modelId: job.request.modelId
     });
 
     await updateJobRecord(jobId, {
