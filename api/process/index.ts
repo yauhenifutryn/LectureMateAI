@@ -2,15 +2,7 @@ import 'dotenv/config';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, authorizeProcess } from '../_lib/access.js';
 import { authorizeJobAccess } from '../_lib/jobAccess.js';
-import { cleanupBlobUrls } from '../_lib/blobCleanup.js';
 import { toPublicError } from '../_lib/errors.js';
-import {
-  uploadGeminiFiles,
-  checkGeminiFiles,
-  generateStudyGuideFromUploaded,
-  cleanupGeminiFiles
-} from '../_lib/gemini.js';
-import { storeResultMarkdown } from '../_lib/resultStorage.js';
 import {
   buildJobId,
   getJobRecord,
@@ -18,6 +10,7 @@ import {
   updateJobRecord
 } from '../_lib/jobStore.js';
 import { validateBlobUrl } from '../_lib/validateBlobUrl.js';
+import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
 
 export const config = { maxDuration: 60 };
 
@@ -38,6 +31,7 @@ type ProcessBody = {
   demoCode?: string;
 };
 
+const PROCESSING_STALE_MS = 0;
 const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
 
 function parseBody(req: VercelRequest): ProcessBody {
@@ -53,9 +47,37 @@ function getQueryValue(value: string | string[] | undefined): string | undefined
   return value;
 }
 
-function buildPreview(text: string, maxChars = 2000): string {
-  if (!text) return '';
-  return text.slice(0, maxChars).trim();
+function getProcessingStaleMs(): number {
+  const raw = Number(process.env.PROCESSING_STALE_MS ?? PROCESSING_STALE_MS);
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
+  return raw;
+}
+
+async function dispatchToWorker(jobId: string): Promise<{ ok: boolean; status: number }> {
+  const workerUrl = process.env.WORKER_URL;
+  const workerSecret = process.env.WORKER_SHARED_SECRET;
+  if (!workerUrl || !workerSecret) {
+    throw new Error('Worker is not configured.');
+  }
+
+  const endpoint = workerUrl.replace(/\/$/, '') + '/worker/run';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), getDispatchTimeoutMs());
+
+  try {
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${workerSecret}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ jobId }),
+      signal: controller.signal
+    });
+    return { ok: response.ok, status: response.status };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function handleCreate(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
@@ -110,23 +132,6 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
   }
 }
 
-async function respondWithJob(res: VercelResponse, jobId: string, job: Awaited<ReturnType<typeof getJobRecord>>) {
-  if (!job) {
-    return res
-      .status(404)
-      .json({ error: { code: 'job_not_found', message: 'Job not found.' } });
-  }
-  return res.status(200).json({
-    jobId,
-    status: job.status,
-    stage: job.stage,
-    progress: job.progress,
-    resultUrl: job.resultUrl,
-    preview: job.preview,
-    error: job.error
-  });
-}
-
 async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
   const { jobId, demoCode } = body;
   if (!jobId) {
@@ -142,112 +147,83 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       .json({ error: { code: 'job_not_found', message: 'Job not found.' } });
   }
 
-  let authorized = false;
-
   try {
     authorizeJobAccess(req, job.access, demoCode);
-    authorized = true;
 
     if (job.status === 'completed' || job.status === 'failed') {
-      return respondWithJob(res, jobId, job);
-    }
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      throw new Error('Server Config Error: Missing API Key');
-    }
-
-    if (!job.uploaded || job.stage === 'queued' || job.stage === 'uploading') {
-      await updateJobRecord(jobId, {
-        status: 'processing',
-        stage: 'uploading',
-        progress: 5
+      return res.status(200).json({
+        jobId,
+        status: job.status,
+        stage: job.stage,
+        progress: job.progress,
+        resultUrl: job.resultUrl,
+        preview: job.preview,
+        error: job.error
       });
-
-      const uploaded = await uploadGeminiFiles(apiKey, job.request);
-
-      const updated = await updateJobRecord(jobId, {
-        status: 'processing',
-        stage: 'polling',
-        progress: 30,
-        uploaded
-      });
-
-      return respondWithJob(res, jobId, updated);
     }
 
-    if (job.stage === 'polling') {
-      const pollResult = await checkGeminiFiles(apiKey, job.uploaded);
-      if (!pollResult.ready) {
-        const updated = await updateJobRecord(jobId, {
-          status: 'processing',
-          stage: 'polling',
-          progress: job.progress ? Math.min(job.progress + 5, 60) : 40
-        });
-        return respondWithJob(res, jobId, updated);
-      }
-
-      const updated = await updateJobRecord(jobId, {
-        status: 'processing',
-        stage: 'generating',
-        progress: 70
+    if (job.status === 'processing') {
+      return res.status(202).json({
+        jobId,
+        status: job.status,
+        stage: job.stage,
+        progress: job.progress,
+        resultUrl: job.resultUrl,
+        preview: job.preview,
+        error: job.error
       });
-      return respondWithJob(res, jobId, updated);
     }
 
-    if (job.stage === 'generating') {
-      const resultText = await generateStudyGuideFromUploaded(apiKey, job.uploaded, job.request);
-
-      const resultUrl = await storeResultMarkdown(
-        resultText,
-        job.request.audio?.fileUrl || job.request.slides[0]?.fileUrl
-      );
-
-      const completed = await updateJobRecord(jobId, {
-        status: 'completed',
-        stage: 'generating',
-        progress: 100,
-        resultUrl: resultUrl || undefined,
-        preview: buildPreview(resultText),
-        error: undefined
+    const dispatch = await dispatchToWorker(jobId);
+    if (!dispatch.ok) {
+      const retryError = {
+        code: 'dispatch_failed',
+        message: 'Worker dispatch failed. Try again shortly.'
+      };
+      const queued = await updateJobRecord(jobId, {
+        status: 'queued',
+        stage: 'queued',
+        progress: 0,
+        error: retryError
       });
-
-      await cleanupGeminiFiles(apiKey, job.uploaded).catch(() => undefined);
-
-      return respondWithJob(res, jobId, completed);
+      return res.status(502).json({
+        jobId,
+        status: queued.status,
+        stage: queued.stage,
+        progress: queued.progress,
+        error: queued.error
+      });
     }
 
-    return respondWithJob(res, jobId, job);
+    const updated = await updateJobRecord(jobId, {
+      status: 'processing',
+      stage: 'dispatching',
+      progress: 1,
+      error: undefined
+    });
+
+    return res.status(202).json({
+      jobId,
+      status: updated.status,
+      stage: updated.stage,
+      progress: updated.progress
+    });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     }
     console.error('Process run failed:', error);
     const publicError = toPublicError(error);
-    try {
-      await updateJobRecord(jobId, {
-        status: 'failed',
-        stage: job.stage,
-        error: publicError
-      });
-    } catch {
-      // Best-effort update.
-    }
     return res.status(500).json({ error: publicError, jobId, status: 'failed' });
-  } finally {
-    if (authorized && job.status === 'queued') {
-      const cleanupUrls = [
-        ...(job.request.audio?.fileUrl ? [job.request.audio.fileUrl] : []),
-        ...job.request.slides.map((slide) => slide.fileUrl)
-      ];
-      if (cleanupUrls.length > 0) {
-        await cleanupBlobUrls(cleanupUrls, console);
-      }
-    }
   }
 }
 
 async function handleStatus(req: VercelRequest, res: VercelResponse) {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('CDN-Cache-Control', 'no-store');
+  res.setHeader('Vercel-CDN-Cache-Control', 'no-store');
   const jobId = getQueryValue(req.query.jobId as string | string[] | undefined);
   const demoCode = getQueryValue(req.query.demoCode as string | string[] | undefined);
 
@@ -267,7 +243,42 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
   try {
     authorizeJobAccess(req, job.access, demoCode);
 
-    return respondWithJob(res, jobId, job);
+    if (job.status === 'processing') {
+      const updatedAt = Date.parse(job.updatedAt);
+      if (Number.isFinite(updatedAt)) {
+        const ageMs = Date.now() - updatedAt;
+        const staleMs = getProcessingStaleMs();
+        if (staleMs > 0 && ageMs > staleMs) {
+          const timeoutError = {
+            code: 'processing_timeout',
+            message: 'Processing timed out. Please retry.'
+          };
+          const failed = await updateJobRecord(jobId, {
+            status: 'failed',
+            error: timeoutError
+          });
+          return res.status(200).json({
+            jobId,
+            status: failed.status,
+            stage: failed.stage,
+            progress: failed.progress,
+            resultUrl: failed.resultUrl,
+            preview: failed.preview,
+            error: failed.error
+          });
+        }
+      }
+    }
+
+    return res.status(200).json({
+      jobId,
+      status: job.status,
+      stage: job.stage,
+      progress: job.progress,
+      resultUrl: job.resultUrl,
+      preview: job.preview,
+      error: job.error
+    });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
