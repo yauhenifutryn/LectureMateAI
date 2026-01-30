@@ -179,6 +179,7 @@ const pollJobStatus = async (
   access: AccessContext | undefined,
   getStatus: (jobId: string, access?: AccessContext) => Promise<JobStatusResponse>,
   wait: (ms: number) => Promise<void>,
+  runJob?: (jobId: string, access?: AccessContext) => Promise<void>,
   maxAttempts = 120
 ): Promise<JobStatusResponse> => {
   let delayMs = 1000;
@@ -190,6 +191,15 @@ const pollJobStatus = async (
     }
     if (status.status === 'completed' || status.status === 'failed') {
       return status;
+    }
+    if (runJob && (status.status === 'queued' || status.status === 'processing')) {
+      if (!status.stage || status.stage === 'queued' || status.stage === 'uploading' || status.stage === 'polling' || status.stage === 'generating') {
+        try {
+          await runJob(jobId, access);
+        } catch (error) {
+          console.error('Failed to advance processing job:', error);
+        }
+      }
     }
     await wait(delayMs);
     delayMs = Math.min(Math.floor(delayMs * 1.5), 8000);
@@ -310,7 +320,8 @@ export const createAnalyzeAudioLecture =
       jobResponse.jobId,
       options?.access,
       getJobStatus,
-      sleepFn || sleep
+      sleepFn || sleep,
+      startJob
     );
 
     if (status.error) {

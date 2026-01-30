@@ -2,7 +2,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import handler from '../../api/process';
 import { buildJobId, getJobRecord, setJobRecord } from '../../api/_lib/jobStore';
-import { generateStudyGuide } from '../../api/_lib/gemini';
+import {
+  uploadGeminiFiles,
+  checkGeminiFiles,
+  generateStudyGuideFromUploaded,
+  cleanupGeminiFiles
+} from '../../api/_lib/gemini';
 import { storeResultMarkdown } from '../../api/_lib/resultStorage';
 import { cleanupBlobUrls } from '../../api/_lib/blobCleanup';
 
@@ -21,7 +26,19 @@ vi.mock('@vercel/kv', () => ({
 }));
 
 vi.mock('../../api/_lib/gemini', () => ({
-  generateStudyGuide: vi.fn(async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript')
+  uploadGeminiFiles: vi.fn(async () => [
+    {
+      fileName: 'gemini-file',
+      fileUri: 'gemini://file',
+      mimeType: 'audio/mpeg',
+      displayName: 'Lecture Audio'
+    }
+  ]),
+  checkGeminiFiles: vi.fn(async () => ({ ready: true })),
+  generateStudyGuideFromUploaded: vi.fn(
+    async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
+  ),
+  cleanupGeminiFiles: vi.fn(async () => {})
 }));
 
 vi.mock('../../api/_lib/resultStorage', () => ({
@@ -56,7 +73,7 @@ const createReq = (overrides: Partial<VercelRequest> = {}) =>
     ...overrides
   }) as VercelRequest;
 
-const buildJob = (jobId: string) => ({
+const baseJob = (jobId: string) => ({
   id: jobId,
   status: 'queued' as const,
   stage: 'queued' as const,
@@ -74,12 +91,30 @@ const buildJob = (jobId: string) => ({
   progress: 0
 });
 
+const withUploadedJob = (jobId: string, stage: 'polling' | 'generating') => ({
+  ...baseJob(jobId),
+  status: 'processing' as const,
+  stage,
+  progress: stage === 'polling' ? 40 : 70,
+  uploaded: [
+    {
+      fileName: 'gemini-file',
+      fileUri: 'gemini://file',
+      mimeType: 'audio/mpeg',
+      displayName: 'Lecture Audio'
+    }
+  ]
+});
+
 describe('process run endpoint', () => {
   beforeEach(() => {
     kvStore.clear();
     kvMock.set.mockClear();
     kvMock.get.mockClear();
-    vi.mocked(generateStudyGuide).mockClear();
+    vi.mocked(uploadGeminiFiles).mockClear();
+    vi.mocked(checkGeminiFiles).mockClear();
+    vi.mocked(generateStudyGuideFromUploaded).mockClear();
+    vi.mocked(cleanupGeminiFiles).mockClear();
     vi.mocked(storeResultMarkdown).mockClear();
     vi.mocked(cleanupBlobUrls).mockClear();
     process.env.GEMINI_API_KEY = 'test-key';
@@ -98,7 +133,7 @@ describe('process run endpoint', () => {
 
   it('rejects mismatched demo code', async () => {
     const jobId = buildJobId();
-    await setJobRecord(buildJob(jobId));
+    await setJobRecord(baseJob(jobId));
 
     const req = createReq({ body: { action: 'run', jobId, demoCode: 'WRONG' } });
     const res = createRes();
@@ -108,9 +143,42 @@ describe('process run endpoint', () => {
     expect(res.statusCode).toBe(403);
   });
 
-  it('runs job and stores result', async () => {
+  it('uploads files and moves job to polling', async () => {
     const jobId = buildJobId();
-    await setJobRecord(buildJob(jobId));
+    await setJobRecord(baseJob(jobId));
+
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const payload = res.body as { status?: string; stage?: string };
+    expect(payload.status).toBe('processing');
+    expect(payload.stage).toBe('polling');
+    expect(vi.mocked(uploadGeminiFiles)).toHaveBeenCalled();
+  });
+
+  it('returns processing when Gemini files are still processing', async () => {
+    vi.mocked(checkGeminiFiles).mockResolvedValueOnce({ ready: false });
+    const jobId = buildJobId();
+    await setJobRecord(withUploadedJob(jobId, 'polling'));
+
+    const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
+    const res = createRes();
+
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(200);
+    const payload = res.body as { status?: string; stage?: string };
+    expect(payload.status).toBe('processing');
+    expect(payload.stage).toBe('polling');
+    expect(vi.mocked(generateStudyGuideFromUploaded)).not.toHaveBeenCalled();
+  });
+
+  it('runs job and stores result when files are ready', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(withUploadedJob(jobId, 'generating'));
 
     const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
     const res = createRes();
@@ -125,16 +193,13 @@ describe('process run endpoint', () => {
     const updated = await getJobRecord(jobId);
     expect(updated?.status).toBe('completed');
     expect(updated?.resultUrl).toBe('https://blob/results.md');
-    expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith(
-      ['https://blob/audio.mp3', 'https://blob/slide.pdf'],
-      expect.any(Object)
-    );
+    expect(vi.mocked(cleanupBlobUrls)).not.toHaveBeenCalled();
   });
 
   it('logs errors when processing fails', async () => {
     const jobId = buildJobId();
-    await setJobRecord(buildJob(jobId));
-    vi.mocked(generateStudyGuide).mockRejectedValueOnce(new Error('boom'));
+    await setJobRecord(withUploadedJob(jobId, 'generating'));
+    vi.mocked(generateStudyGuideFromUploaded).mockRejectedValueOnce(new Error('boom'));
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
     const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
@@ -150,9 +215,9 @@ describe('process run endpoint', () => {
   it('passes modelId from job request to generateStudyGuide', async () => {
     const jobId = buildJobId();
     await setJobRecord({
-      ...buildJob(jobId),
+      ...withUploadedJob(jobId, 'generating'),
       request: {
-        ...buildJob(jobId).request,
+        ...baseJob(jobId).request,
         modelId: 'gemini-2.5-pro'
       }
     });
@@ -162,8 +227,9 @@ describe('process run endpoint', () => {
 
     await handler(req, res);
 
-    expect(vi.mocked(generateStudyGuide)).toHaveBeenCalledWith(
+    expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalledWith(
       'test-key',
+      expect.any(Array),
       expect.objectContaining({ modelId: 'gemini-2.5-pro' })
     );
   });

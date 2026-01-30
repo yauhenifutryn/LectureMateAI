@@ -4,7 +4,12 @@ import { AccessError, authorizeProcess } from '../_lib/access.js';
 import { authorizeJobAccess } from '../_lib/jobAccess.js';
 import { cleanupBlobUrls } from '../_lib/blobCleanup.js';
 import { toPublicError } from '../_lib/errors.js';
-import { generateStudyGuide } from '../_lib/gemini.js';
+import {
+  uploadGeminiFiles,
+  checkGeminiFiles,
+  generateStudyGuideFromUploaded,
+  cleanupGeminiFiles
+} from '../_lib/gemini.js';
 import { storeResultMarkdown } from '../_lib/resultStorage.js';
 import {
   buildJobId,
@@ -105,6 +110,23 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
   }
 }
 
+async function respondWithJob(res: VercelResponse, jobId: string, job: Awaited<ReturnType<typeof getJobRecord>>) {
+  if (!job) {
+    return res
+      .status(404)
+      .json({ error: { code: 'job_not_found', message: 'Job not found.' } });
+  }
+  return res.status(200).json({
+    jobId,
+    status: job.status,
+    stage: job.stage,
+    progress: job.progress,
+    resultUrl: job.resultUrl,
+    preview: job.preview,
+    error: job.error
+  });
+}
+
 async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
   const { jobId, demoCode } = body;
   if (!jobId) {
@@ -126,16 +148,8 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
     authorizeJobAccess(req, job.access, demoCode);
     authorized = true;
 
-    if (job.status !== 'queued') {
-      return res.status(200).json({
-        jobId,
-        status: job.status,
-        stage: job.stage,
-        progress: job.progress,
-        resultUrl: job.resultUrl,
-        preview: job.preview,
-        error: job.error
-      });
+    if (job.status === 'completed' || job.status === 'failed') {
+      return respondWithJob(res, jobId, job);
     }
 
     const apiKey = process.env.GEMINI_API_KEY;
@@ -143,46 +157,67 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       throw new Error('Server Config Error: Missing API Key');
     }
 
-    await updateJobRecord(jobId, {
-      status: 'processing',
-      stage: 'uploading',
-      progress: 5
-    });
+    if (!job.uploaded || job.stage === 'queued' || job.stage === 'uploading') {
+      await updateJobRecord(jobId, {
+        status: 'processing',
+        stage: 'uploading',
+        progress: 5
+      });
 
-    const resultText = await generateStudyGuide(apiKey, {
-      audio: job.request.audio,
-      slides: job.request.slides,
-      userContext: job.request.userContext,
-      modelId: job.request.modelId
-    });
+      const uploaded = await uploadGeminiFiles(apiKey, job.request);
 
-    await updateJobRecord(jobId, {
-      stage: 'generating',
-      progress: 80
-    });
+      const updated = await updateJobRecord(jobId, {
+        status: 'processing',
+        stage: 'polling',
+        progress: 30,
+        uploaded
+      });
 
-    const resultUrl = await storeResultMarkdown(
-      resultText,
-      job.request.audio?.fileUrl || job.request.slides[0]?.fileUrl
-    );
+      return respondWithJob(res, jobId, updated);
+    }
 
-    const completed = await updateJobRecord(jobId, {
-      status: 'completed',
-      stage: 'generating',
-      progress: 100,
-      resultUrl: resultUrl || undefined,
-      preview: buildPreview(resultText),
-      error: undefined
-    });
+    if (job.stage === 'polling') {
+      const pollResult = await checkGeminiFiles(apiKey, job.uploaded);
+      if (!pollResult.ready) {
+        const updated = await updateJobRecord(jobId, {
+          status: 'processing',
+          stage: 'polling',
+          progress: job.progress ? Math.min(job.progress + 5, 60) : 40
+        });
+        return respondWithJob(res, jobId, updated);
+      }
 
-    return res.status(200).json({
-      jobId,
-      status: completed.status,
-      stage: completed.stage,
-      progress: completed.progress,
-      resultUrl: completed.resultUrl,
-      preview: completed.preview
-    });
+      const updated = await updateJobRecord(jobId, {
+        status: 'processing',
+        stage: 'generating',
+        progress: 70
+      });
+      return respondWithJob(res, jobId, updated);
+    }
+
+    if (job.stage === 'generating') {
+      const resultText = await generateStudyGuideFromUploaded(apiKey, job.uploaded, job.request);
+
+      const resultUrl = await storeResultMarkdown(
+        resultText,
+        job.request.audio?.fileUrl || job.request.slides[0]?.fileUrl
+      );
+
+      const completed = await updateJobRecord(jobId, {
+        status: 'completed',
+        stage: 'generating',
+        progress: 100,
+        resultUrl: resultUrl || undefined,
+        preview: buildPreview(resultText),
+        error: undefined
+      });
+
+      await cleanupGeminiFiles(apiKey, job.uploaded).catch(() => undefined);
+
+      return respondWithJob(res, jobId, completed);
+    }
+
+    return respondWithJob(res, jobId, job);
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
@@ -232,15 +267,7 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
   try {
     authorizeJobAccess(req, job.access, demoCode);
 
-    return res.status(200).json({
-      jobId,
-      status: job.status,
-      stage: job.stage,
-      progress: job.progress,
-      resultUrl: job.resultUrl,
-      preview: job.preview,
-      error: job.error
-    });
+    return respondWithJob(res, jobId, job);
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
