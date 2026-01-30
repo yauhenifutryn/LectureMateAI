@@ -18,6 +18,7 @@ import { shouldEnablePlaybackWaveform } from './utils/playbackWaveform';
 import { isMobileUserAgent } from './utils/device';
 import { getAnalysisStartState } from './utils/analysisState';
 import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
+import { safeGetItem, safeRemoveItem, safeSetItem } from './utils/storage';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
@@ -82,7 +83,7 @@ const App: React.FC = () => {
 
   // 2. Backup: Restore Study Guide from LocalStorage on mount
   useEffect(() => {
-    const savedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+    const savedData = safeGetItem(localStorage, LOCAL_STORAGE_KEY);
     if (savedData) {
       try {
         const parsed = JSON.parse(savedData);
@@ -100,7 +101,7 @@ const App: React.FC = () => {
 
   // 2b. Access: Restore access token from LocalStorage on mount
   useEffect(() => {
-    const savedAccess = localStorage.getItem(ACCESS_STORAGE_KEY);
+    const savedAccess = safeGetItem(localStorage, ACCESS_STORAGE_KEY);
     if (!savedAccess) return;
     try {
       const parsed = JSON.parse(savedAccess) as AccessContext;
@@ -117,7 +118,7 @@ const App: React.FC = () => {
   useEffect(() => {
     if (result) {
       try {
-        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify({
+        safeSetItem(localStorage, LOCAL_STORAGE_KEY, JSON.stringify({
           result,
           timestamp: Date.now()
         }));
@@ -130,9 +131,9 @@ const App: React.FC = () => {
   // 3b. Access: Persist access token
   useEffect(() => {
     if (access) {
-      localStorage.setItem(ACCESS_STORAGE_KEY, JSON.stringify(access));
+      safeSetItem(localStorage, ACCESS_STORAGE_KEY, JSON.stringify(access));
     } else {
-      localStorage.removeItem(ACCESS_STORAGE_KEY);
+      safeRemoveItem(localStorage, ACCESS_STORAGE_KEY);
     }
   }, [access]);
 
@@ -250,7 +251,7 @@ const App: React.FC = () => {
     setError(null);
     setChatMessages([]);
     chatSessionRef.current = null;
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    safeRemoveItem(localStorage, LOCAL_STORAGE_KEY);
     setShowResetConfirm(false);
   };
 
