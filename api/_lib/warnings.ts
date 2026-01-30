@@ -11,3 +11,5 @@ export function installWarningFilter(): void {
     console.warn(warning);
   });
 }
+
+installWarningFilter();

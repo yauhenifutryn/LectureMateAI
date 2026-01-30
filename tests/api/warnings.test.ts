@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { installWarningFilter } from '../../api/_lib/warnings';
 
 describe('installWarningFilter', () => {
-  it('suppresses DEP0169 warnings and logs others', () => {
+  it('suppresses DEP0169 warnings and logs others', async () => {
+    vi.resetModules();
     const originalOn = process.on.bind(process);
     const handlers: ((warning: any) => void)[] = [];
     const onSpy = vi.spyOn(process, 'on').mockImplementation((event, handler) => {
@@ -13,7 +14,8 @@ describe('installWarningFilter', () => {
     });
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-    installWarningFilter();
+    const { installWarningFilter: install } = await import('../../api/_lib/warnings');
+    install();
 
     expect(handlers.length).toBeGreaterThan(0);
 

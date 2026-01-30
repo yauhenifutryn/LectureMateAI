@@ -1,6 +1,6 @@
+import '../_lib/warnings.js';
 import 'dotenv/config';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { installWarningFilter } from '../_lib/warnings.js';
 import { AccessError, authorizeProcess } from '../_lib/access.js';
 import { authorizeJobAccess } from '../_lib/jobAccess.js';
 import { toPublicError } from '../_lib/errors.js';
@@ -14,8 +14,6 @@ import { validateBlobUrl } from '../_lib/validateBlobUrl.js';
 import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
 
 export const config = { maxDuration: 60 };
-
-installWarningFilter();
 
 type FilePayload = {
   fileUrl: string;
