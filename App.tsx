@@ -18,7 +18,8 @@ import { shouldEnablePlaybackWaveform } from './utils/playbackWaveform';
 import { isMobileUserAgent } from './utils/device';
 import { getAnalysisStartState } from './utils/analysisState';
 import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
-import { safeGetItem, safeRemoveItem, safeSetItem } from './utils/storage';
+import { restoreAccessFromStorage, restoreBackupFromStorage } from './utils/accessStorage';
+import { safeRemoveItem, safeSetItem } from './utils/storage';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
@@ -83,34 +84,19 @@ const App: React.FC = () => {
 
   // 2. Backup: Restore Study Guide from LocalStorage on mount
   useEffect(() => {
-    const savedData = safeGetItem(localStorage, LOCAL_STORAGE_KEY);
-    if (savedData) {
-      try {
-        const parsed = JSON.parse(savedData);
-        if (parsed.result && parsed.result.studyGuide) {
-          console.log("Restoring session from backup");
-          setResult(parsed.result);
-          setStatus(AppStatus.COMPLETED);
-        }
-      } catch (e) {
-        console.error("Failed to restore backup:", e);
-        localStorage.removeItem(LOCAL_STORAGE_KEY);
-      }
+    const parsed = restoreBackupFromStorage(localStorage, LOCAL_STORAGE_KEY);
+    if (parsed?.result && (parsed.result as AnalysisResult).studyGuide) {
+      console.log("Restoring session from backup");
+      setResult(parsed.result as AnalysisResult);
+      setStatus(AppStatus.COMPLETED);
     }
   }, []);
 
   // 2b. Access: Restore access token from LocalStorage on mount
   useEffect(() => {
-    const savedAccess = safeGetItem(localStorage, ACCESS_STORAGE_KEY);
-    if (!savedAccess) return;
-    try {
-      const parsed = JSON.parse(savedAccess) as AccessContext;
-      if (parsed?.mode && parsed?.token) {
-        setAccess(parsed);
-      }
-    } catch (e) {
-      console.error("Failed to restore access:", e);
-      localStorage.removeItem(ACCESS_STORAGE_KEY);
+    const restored = restoreAccessFromStorage(localStorage, ACCESS_STORAGE_KEY);
+    if (restored) {
+      setAccess(restored);
     }
   }, []);
 
