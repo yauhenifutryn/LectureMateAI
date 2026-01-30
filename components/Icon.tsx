@@ -1,12 +1,12 @@
 import React from 'react';
-import { 
-  UploadCloud, 
-  FileAudio, 
-  X, 
-  CheckCircle, 
-  BookOpen, 
-  FileText, 
-  Loader2, 
+import {
+  UploadCloud,
+  FileAudio,
+  X,
+  CheckCircle,
+  BookOpen,
+  FileText,
+  Loader2,
   Download,
   AlertCircle,
   Mic,
@@ -16,7 +16,8 @@ import {
   Lock,
   LogOut,
   Play,
-  Pause
+  Pause,
+  Sparkles
 } from 'lucide-react';
 
 export const Icons = {
@@ -36,5 +37,6 @@ export const Icons = {
   Lock,
   LogOut,
   Play,
-  Pause
+  Pause,
+  Sparkles
 };
