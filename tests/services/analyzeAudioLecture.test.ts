@@ -142,6 +142,40 @@ describe('analyzeAudioLecture', () => {
     await expect(analyze(fakeFile, [], 'context')).rejects.toThrow('Unauthorized');
   });
 
+  it('keeps polling when a transient dispatch error is reported', async () => {
+    const fakeUpload = async () => ({
+      fileUrl: 'https://public.blob.vercel-storage.com/lectures/test.mp3',
+      mimeType: 'audio/mpeg'
+    });
+    const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
+    const startJob = vi.fn().mockResolvedValue(undefined);
+    const statuses = [
+      { status: 'queued' as const, error: { code: 'dispatch_failed', message: 'Retrying' } },
+      { status: 'processing' as const },
+      { status: 'completed' as const, resultUrl: 'https://blob/result.md' }
+    ];
+    const getJobStatus = vi
+      .fn()
+      .mockImplementation(async () => statuses.shift() ?? statuses[statuses.length - 1]);
+    const fetchResultText = vi
+      .fn()
+      .mockResolvedValue('===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript');
+
+    const analyze = createAnalyzeAudioLecture({
+      uploadToBlob: fakeUpload,
+      createJob,
+      startJob,
+      getJobStatus,
+      fetchResultText,
+      sleep: async () => {}
+    });
+
+    const fakeFile = { name: 'audio.mp3', type: 'audio/mpeg' } as File;
+
+    await expect(analyze(fakeFile, [], 'context')).resolves.toBeDefined();
+    expect(startJob).toHaveBeenCalledWith('job-1', undefined);
+  });
+
   it('passes selected modelId to job creation', async () => {
     const payloads: any[] = [];
     const fakeUpload = async (file: File) => ({

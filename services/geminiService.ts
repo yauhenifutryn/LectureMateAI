@@ -174,6 +174,15 @@ const fetchResultText = async (resultUrl: string): Promise<string> => {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const TRANSIENT_ERROR_CODES = new Set(['dispatch_failed', 'overloaded_retry', 'generation_retry']);
+
+const isTransientStatusError = (status: JobStatusResponse): boolean => {
+  const code = status.error?.code;
+  if (!code) return false;
+  if (status.status === 'failed') return false;
+  return TRANSIENT_ERROR_CODES.has(code);
+};
+
 const pollJobStatus = async (
   jobId: string,
   access: AccessContext | undefined,
@@ -186,7 +195,7 @@ const pollJobStatus = async (
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const status = await getStatus(jobId, access);
-    if (status.error) {
+    if (status.error && !isTransientStatusError(status)) {
       return status;
     }
     if (status.status === 'completed' || status.status === 'failed') {
