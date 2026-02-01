@@ -11,7 +11,7 @@ export function resolveStaticPath(urlPath: string) {
   return path.join(distDir, urlPath.replace(/^\//, ''));
 }
 
-type ApiHandler = (req: VercelRequest, res: VercelResponse) => Promise<void> | void;
+type ApiHandler = (req: VercelRequest, res: VercelResponse) => Promise<unknown> | unknown;
 
 let cachedRoutes: Record<string, ApiHandler> | null = null;
 
