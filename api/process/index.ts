@@ -122,7 +122,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
       progress: 0
     });
 
-    return res.status(200).json({ jobId });
+    return res.status(202).json({ jobId });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
@@ -131,6 +131,40 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     const publicError = toPublicError(error);
     return res.status(500).json({ error: publicError });
   }
+}
+
+function dispatchInBackground(jobId: string) {
+  void dispatchToWorker(jobId)
+    .then(async (dispatch) => {
+      if (dispatch.ok) return;
+      const retryError = {
+        code: 'dispatch_failed',
+        message: 'Worker dispatch failed. Try again shortly.'
+      };
+      await updateJobRecord(jobId, {
+        status: 'queued',
+        stage: 'queued',
+        progress: 0,
+        error: retryError
+      });
+    })
+    .catch(async (error) => {
+      console.error('Worker dispatch failed:', error);
+      const retryError = {
+        code: 'dispatch_failed',
+        message: 'Worker dispatch failed. Try again shortly.'
+      };
+      try {
+        await updateJobRecord(jobId, {
+          status: 'queued',
+          stage: 'queued',
+          progress: 0,
+          error: retryError
+        });
+      } catch (updateError) {
+        console.error('Failed to update job after dispatch error:', updateError);
+      }
+    });
 }
 
 async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
@@ -175,33 +209,14 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       });
     }
 
-    const dispatch = await dispatchToWorker(jobId);
-    if (!dispatch.ok) {
-      const retryError = {
-        code: 'dispatch_failed',
-        message: 'Worker dispatch failed. Try again shortly.'
-      };
-      const queued = await updateJobRecord(jobId, {
-        status: 'queued',
-        stage: 'queued',
-        progress: 0,
-        error: retryError
-      });
-      return res.status(502).json({
-        jobId,
-        status: queued.status,
-        stage: queued.stage,
-        progress: queued.progress,
-        error: queued.error
-      });
-    }
-
     const updated = await updateJobRecord(jobId, {
       status: 'processing',
       stage: 'dispatching',
       progress: 1,
       error: undefined
     });
+
+    dispatchInBackground(jobId);
 
     return res.status(202).json({
       jobId,

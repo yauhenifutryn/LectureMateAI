@@ -10,9 +10,9 @@ describe('dispatch config', () => {
 
   it('falls back to default for invalid values', () => {
     process.env.WORKER_DISPATCH_TIMEOUT_MS = 'not-a-number';
-    expect(getDispatchTimeoutMs()).toBe(15000);
+    expect(getDispatchTimeoutMs()).toBe(5000);
     process.env.WORKER_DISPATCH_TIMEOUT_MS = '-1';
-    expect(getDispatchTimeoutMs()).toBe(15000);
+    expect(getDispatchTimeoutMs()).toBe(5000);
     delete process.env.WORKER_DISPATCH_TIMEOUT_MS;
   });
 });

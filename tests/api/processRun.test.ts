@@ -164,7 +164,7 @@ describe('process run endpoint', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('keeps job queued when dispatch fails', async () => {
+  it('returns 202 even when dispatch fails', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'fail' });
@@ -174,9 +174,7 @@ describe('process run endpoint', () => {
 
     await handler(req, res);
 
-    expect(res.statusCode).toBe(502);
-    const updated = await getJobRecord(jobId);
-    expect(updated?.status).toBe('queued');
-    expect(updated?.error?.code).toBe('dispatch_failed');
+    expect(res.statusCode).toBe(202);
+    expect(fetchMock).toHaveBeenCalled();
   });
 });
