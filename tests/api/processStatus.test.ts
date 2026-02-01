@@ -18,9 +18,14 @@ vi.mock('@vercel/kv', () => ({
 }));
 
 const createRes = () => {
+  const headers: Record<string, string> = {};
   const res = {
     statusCode: 200,
     body: undefined as unknown,
+    headers,
+    setHeader(key: string, value: string) {
+      headers[key] = value;
+    },
     status(code: number) {
       this.statusCode = code;
       return this;
@@ -30,7 +35,11 @@ const createRes = () => {
       return this;
     }
   };
-  return res as VercelResponse & { statusCode: number; body: unknown };
+  return res as VercelResponse & {
+    statusCode: number;
+    body: unknown;
+    headers: Record<string, string>;
+  };
 };
 
 const createReq = (overrides: Partial<VercelRequest> = {}) =>
