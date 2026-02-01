@@ -1,7 +1,7 @@
 import http from 'node:http';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
-import { buildVercelRequest, createVercelResponse } from './adapter';
+import { buildVercelRequest, createVercelResponse } from './adapter.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const distDir = path.join(process.cwd(), 'dist');
@@ -18,8 +18,6 @@ let cachedRoutes: Record<string, ApiHandler> | null = null;
 async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
   if (cachedRoutes) return cachedRoutes;
 
-  const useTs = process.env.NODE_ENV === 'test';
-
   const [
     processHandler,
     uploadHandler,
@@ -34,18 +32,18 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
     adminVerifyHandler,
     adminListHandler
   ] = await Promise.all([
-    useTs ? import('../api/process/index.ts') : import('../api/process/index.js'),
-    useTs ? import('../api/upload/index.ts') : import('../api/upload/index.js'),
-    useTs ? import('../api/chat/index.ts') : import('../api/chat/index.js'),
-    useTs ? import('../api/demo/validate.ts') : import('../api/demo/validate.js'),
-    useTs ? import('../api/blob/delete.ts') : import('../api/blob/delete.js'),
-    useTs ? import('../api/admin/generate.ts') : import('../api/admin/generate.js'),
-    useTs ? import('../api/admin/revoke.ts') : import('../api/admin/revoke.js'),
-    useTs ? import('../api/admin/events.ts') : import('../api/admin/events.js'),
-    useTs ? import('../api/admin/stats.ts') : import('../api/admin/stats.js'),
-    useTs ? import('../api/admin/purge.ts') : import('../api/admin/purge.js'),
-    useTs ? import('../api/admin/verify.ts') : import('../api/admin/verify.js'),
-    useTs ? import('../api/admin/list.ts') : import('../api/admin/list.js')
+    import('../api/process/index.js'),
+    import('../api/upload.js'),
+    import('../api/chat.js'),
+    import('../api/demo/validate.js'),
+    import('../api/blob/delete.js'),
+    import('../api/admin/generate.js'),
+    import('../api/admin/revoke.js'),
+    import('../api/admin/events.js'),
+    import('../api/admin/stats.js'),
+    import('../api/admin/purge.js'),
+    import('../api/admin/verify.js'),
+    import('../api/admin/list.js')
   ]);
 
   cachedRoutes = {
