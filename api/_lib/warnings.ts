@@ -5,7 +5,11 @@ export function installWarningFilter(): void {
   warningFilterInstalled = true;
 
   process.on('warning', (warning) => {
-    if (warning?.code === 'DEP0169') {
+    const code =
+      typeof warning === 'object' && warning && 'code' in warning
+        ? (warning as { code?: string }).code
+        : undefined;
+    if (code === 'DEP0169') {
       return;
     }
     console.warn(warning);
