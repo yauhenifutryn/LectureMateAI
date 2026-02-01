@@ -2,18 +2,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { buildVercelRequest, createVercelResponse } from './adapter';
-import processHandler from '../api/process';
-import uploadHandler from '../api/upload';
-import chatHandler from '../api/chat';
-import demoValidateHandler from '../api/demo/validate';
-import blobDeleteHandler from '../api/blob/delete';
-import adminGenerateHandler from '../api/admin/generate';
-import adminRevokeHandler from '../api/admin/revoke';
-import adminEventsHandler from '../api/admin/events';
-import adminStatsHandler from '../api/admin/stats';
-import adminPurgeHandler from '../api/admin/purge';
-import adminVerifyHandler from '../api/admin/verify';
-import adminListHandler from '../api/admin/list';
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 const distDir = path.join(process.cwd(), 'dist');
 
@@ -22,20 +11,60 @@ export function resolveStaticPath(urlPath: string) {
   return path.join(distDir, urlPath.replace(/^\//, ''));
 }
 
-const apiRoutes: Record<string, typeof processHandler> = {
-  '/api/process': processHandler,
-  '/api/upload': uploadHandler,
-  '/api/chat': chatHandler,
-  '/api/demo/validate': demoValidateHandler,
-  '/api/blob/delete': blobDeleteHandler,
-  '/api/admin/generate': adminGenerateHandler,
-  '/api/admin/revoke': adminRevokeHandler,
-  '/api/admin/events': adminEventsHandler,
-  '/api/admin/stats': adminStatsHandler,
-  '/api/admin/purge': adminPurgeHandler,
-  '/api/admin/verify': adminVerifyHandler,
-  '/api/admin/list': adminListHandler
-};
+type ApiHandler = (req: VercelRequest, res: VercelResponse) => Promise<void> | void;
+
+let cachedRoutes: Record<string, ApiHandler> | null = null;
+
+async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
+  if (cachedRoutes) return cachedRoutes;
+
+  const useTs = process.env.NODE_ENV === 'test';
+
+  const [
+    processHandler,
+    uploadHandler,
+    chatHandler,
+    demoValidateHandler,
+    blobDeleteHandler,
+    adminGenerateHandler,
+    adminRevokeHandler,
+    adminEventsHandler,
+    adminStatsHandler,
+    adminPurgeHandler,
+    adminVerifyHandler,
+    adminListHandler
+  ] = await Promise.all([
+    useTs ? import('../api/process/index.ts') : import('../api/process/index.js'),
+    useTs ? import('../api/upload/index.ts') : import('../api/upload/index.js'),
+    useTs ? import('../api/chat/index.ts') : import('../api/chat/index.js'),
+    useTs ? import('../api/demo/validate.ts') : import('../api/demo/validate.js'),
+    useTs ? import('../api/blob/delete.ts') : import('../api/blob/delete.js'),
+    useTs ? import('../api/admin/generate.ts') : import('../api/admin/generate.js'),
+    useTs ? import('../api/admin/revoke.ts') : import('../api/admin/revoke.js'),
+    useTs ? import('../api/admin/events.ts') : import('../api/admin/events.js'),
+    useTs ? import('../api/admin/stats.ts') : import('../api/admin/stats.js'),
+    useTs ? import('../api/admin/purge.ts') : import('../api/admin/purge.js'),
+    useTs ? import('../api/admin/verify.ts') : import('../api/admin/verify.js'),
+    useTs ? import('../api/admin/list.ts') : import('../api/admin/list.js')
+  ]);
+
+  cachedRoutes = {
+    '/api/process': processHandler.default,
+    '/api/upload': uploadHandler.default,
+    '/api/chat': chatHandler.default,
+    '/api/demo/validate': demoValidateHandler.default,
+    '/api/blob/delete': blobDeleteHandler.default,
+    '/api/admin/generate': adminGenerateHandler.default,
+    '/api/admin/revoke': adminRevokeHandler.default,
+    '/api/admin/events': adminEventsHandler.default,
+    '/api/admin/stats': adminStatsHandler.default,
+    '/api/admin/purge': adminPurgeHandler.default,
+    '/api/admin/verify': adminVerifyHandler.default,
+    '/api/admin/list': adminListHandler.default
+  };
+
+  return cachedRoutes;
+}
 
 async function readRequestBody(req: http.IncomingMessage): Promise<string | undefined> {
   const chunks: Buffer[] = [];
@@ -48,7 +77,8 @@ async function readRequestBody(req: http.IncomingMessage): Promise<string | unde
 
 async function handleApi(req: http.IncomingMessage, res: http.ServerResponse) {
   const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  const handler = apiRoutes[url.pathname];
+  const routes = await getApiRoutes();
+  const handler = routes[url.pathname];
   if (!handler) {
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: { code: 'not_found', message: 'Not found.' } }));
