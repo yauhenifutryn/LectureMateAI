@@ -81,12 +81,16 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
         error: undefined
       });
 
-      const sources: { payload: { fileUrl: string; mimeType: string }; displayName: string }[] = [];
+      const sources: {
+        payload: { fileUrl: string; mimeType: string };
+        displayName: string;
+        kind: 'audio' | 'slide';
+      }[] = [];
       if (job.request.audio) {
-        sources.push({ payload: job.request.audio, displayName: 'Lecture Audio' });
+        sources.push({ payload: job.request.audio, displayName: 'Lecture Audio', kind: 'audio' });
       }
       job.request.slides.forEach((slide, index) => {
-        sources.push({ payload: slide, displayName: `Lecture Slide ${index + 1}` });
+        sources.push({ payload: slide, displayName: `Lecture Slide ${index + 1}`, kind: 'slide' });
       });
 
       uploaded = await uploadGeminiFiles(apiKey, sources);

@@ -1,10 +1,8 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GoogleAIFileManager } from '@google/generative-ai/server';
+import { GoogleGenAI } from '@google/genai';
 import fs from 'fs';
 import path from 'path';
 import { getSystemInstruction } from './prompts.js';
 import { buildPrompt } from './promptBuilder.js';
-import { isPollingExpired } from './polling.js';
 
 export type FilePayload = {
   fileUrl: string;
@@ -25,6 +23,12 @@ export type UploadedFileRef = {
   displayName: string;
 };
 
+export type GeminiPart = {
+  inlineData?: { mimeType: string; data: string };
+  fileData?: { mimeType: string; fileUri: string };
+  text?: string;
+};
+
 export class OverloadRetryError extends Error {
   code = 'overload_retry';
   constructor(message = 'Gemini overloaded. Retry later.') {
@@ -41,7 +45,7 @@ export class GenerationRetryError extends Error {
   }
 }
 
-const MODEL_ALLOWLIST = new Set(['gemini-2.5-pro', 'gemini-2.5-flash']);
+const MODEL_ALLOWLIST = new Set(['gemini-3-pro-preview', 'gemini-3-flash-preview']);
 
 export function getModelId(override?: string): string {
   const candidate = override?.trim();
@@ -52,24 +56,25 @@ export function getModelId(override?: string): string {
   if (envModel && MODEL_ALLOWLIST.has(envModel)) {
     return envModel;
   }
-  return 'gemini-2.5-flash';
+  return 'gemini-3-flash-preview';
 }
 
-const buildTempPath = (mimeType?: string) => {
-  const ext = mimeType?.split('/')[1] || 'bin';
-  return path.join('/tmp', `upload-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+const INLINE_THRESHOLD_BYTES = 10 * 1024 * 1024;
+const DEFAULT_POLL_ATTEMPTS = 60;
+const DEFAULT_POLL_DELAY_MS = 2000;
+
+type ProcessFileOptions = {
+  inlineThresholdBytes?: number;
+  alwaysUploadAudio?: boolean;
+  pollAttempts?: number;
+  pollDelayMs?: number;
+  allowUpload?: boolean;
 };
 
-const fetchToTempFile = async (source: FilePayload): Promise<string> => {
-  const response = await fetch(source.fileUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch file: ${response.statusText}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  const buffer = Buffer.from(arrayBuffer);
-  const tempFilePath = buildTempPath(source.mimeType);
-  fs.writeFileSync(tempFilePath, buffer);
-  return tempFilePath;
+type ProcessFileResult = {
+  part?: GeminiPart;
+  uploaded?: UploadedFileRef;
+  skipped?: boolean;
 };
 
 type RetryOptions = {
@@ -161,73 +166,142 @@ export async function withOverloadRetry<T>(
   throw lastError;
 }
 
-const uploadAndWait = async (
-  fileManager: GoogleAIFileManager,
-  source: FilePayload,
-  displayName: string,
-  maxPollingMs: number
-): Promise<UploadedFileRef> => {
-  const tempFilePath = await fetchToTempFile(source);
+const buildTempPath = (mimeType?: string) => {
+  const ext = mimeType?.split('/')[1] || 'bin';
+  return path.join('/tmp', `upload-${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`);
+};
 
-  let uploadResult: Awaited<ReturnType<typeof fileManager.uploadFile>> | undefined;
+const fetchFileBuffer = async (source: FilePayload): Promise<Buffer> => {
+  const response = await fetch(source.fileUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch file: ${response.statusText}`);
+  }
+  const arrayBuffer = await response.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+};
+
+const uploadAndPoll = async (
+  ai: GoogleGenAI,
+  tempFilePath: string,
+  mimeType: string,
+  displayName: string,
+  pollAttempts: number,
+  pollDelayMs: number
+): Promise<{ fileName: string; fileUri: string; mimeType: string }> => {
+  const uploadResult = await ai.files.upload({
+    file: tempFilePath,
+    config: { displayName, mimeType }
+  });
+  const uploadedFile = (uploadResult as any).file || uploadResult;
+  if (!uploadedFile?.name) {
+    throw new Error('Gemini upload failed.');
+  }
+
+  let remoteFile = await ai.files.get({ name: uploadedFile.name });
+  let attempts = 0;
+  while (remoteFile.state === 'PROCESSING' && attempts < pollAttempts) {
+    await sleep(pollDelayMs);
+    remoteFile = await ai.files.get({ name: uploadedFile.name });
+    attempts += 1;
+  }
+
+  if (remoteFile.state === 'FAILED') {
+    throw new Error('Gemini file processing failed.');
+  }
+  if (remoteFile.state === 'PROCESSING') {
+    throw new GenerationRetryError('Gemini processing timed out.');
+  }
+
+  return {
+    fileName: uploadedFile.name,
+    fileUri: remoteFile.uri ?? uploadedFile.uri,
+    mimeType: remoteFile.mimeType ?? mimeType
+  };
+};
+
+export async function processFilePayload(
+  ai: GoogleGenAI,
+  payload: FilePayload,
+  displayName: string,
+  kind: 'audio' | 'slide',
+  options: ProcessFileOptions = {}
+): Promise<ProcessFileResult> {
+  const inlineThresholdBytes = options.inlineThresholdBytes ?? INLINE_THRESHOLD_BYTES;
+  const alwaysUploadAudio = options.alwaysUploadAudio ?? true;
+  const allowUpload = options.allowUpload ?? true;
+  const pollAttempts = options.pollAttempts ?? DEFAULT_POLL_ATTEMPTS;
+  const pollDelayMs = options.pollDelayMs ?? DEFAULT_POLL_DELAY_MS;
+  const mimeType = payload.mimeType || 'application/octet-stream';
+
+  const buffer = await fetchFileBuffer(payload);
+  const sizeBytes = buffer.byteLength;
+  const shouldInline = kind !== 'audio' && sizeBytes <= inlineThresholdBytes;
+  if (shouldInline) {
+    return {
+      part: {
+        inlineData: {
+          mimeType,
+          data: buffer.toString('base64')
+        }
+      }
+    };
+  }
+
+  if (kind === 'audio' && !alwaysUploadAudio) {
+    return {
+      part: {
+        inlineData: {
+          mimeType,
+          data: buffer.toString('base64')
+        }
+      }
+    };
+  }
+
+  if (!allowUpload) {
+    return { skipped: true };
+  }
+
+  const tempFilePath = buildTempPath(mimeType);
+  fs.writeFileSync(tempFilePath, buffer);
 
   try {
-    uploadResult = await fileManager.uploadFile(tempFilePath, {
-      mimeType: source.mimeType,
-      displayName
-    });
-
-    const pollingStart = Date.now();
-    let file = await fileManager.getFile(uploadResult.file.name);
-    while (file.state === 'PROCESSING') {
-      if (isPollingExpired(pollingStart, Date.now(), maxPollingMs)) {
-        throw new Error('Gemini processing timed out.');
-      }
-      await new Promise((resolve) => setTimeout(resolve, 2000));
-      file = await fileManager.getFile(uploadResult.file.name);
-    }
-
-    if (file.state === 'FAILED') {
-      throw new Error('Gemini file processing failed.');
-    }
-
+    const uploaded = await uploadAndPoll(ai, tempFilePath, mimeType, displayName, pollAttempts, pollDelayMs);
     return {
-      fileName: uploadResult.file.name,
-      mimeType: uploadResult.file.mimeType,
-      fileUri: uploadResult.file.uri,
-      displayName
+      part: {
+        fileData: {
+          mimeType: uploaded.mimeType,
+          fileUri: uploaded.fileUri
+        }
+      },
+      uploaded: {
+        fileName: uploaded.fileName,
+        fileUri: uploaded.fileUri,
+        mimeType: uploaded.mimeType,
+        displayName
+      }
     };
   } finally {
     if (fs.existsSync(tempFilePath)) {
       fs.unlinkSync(tempFilePath);
     }
   }
-};
+}
 
 export async function uploadGeminiFiles(
   apiKey: string,
-  sources: { payload: FilePayload; displayName: string }[]
+  sources: { payload: FilePayload; displayName: string; kind: 'audio' | 'slide' }[]
 ): Promise<UploadedFileRef[]> {
-  const fileManager = new GoogleAIFileManager(apiKey);
+  const ai = new GoogleGenAI({ apiKey });
   const uploaded: UploadedFileRef[] = [];
 
   for (const source of sources) {
-    const tempFilePath = await fetchToTempFile(source.payload);
-    try {
-      const uploadResult = await fileManager.uploadFile(tempFilePath, {
-        mimeType: source.payload.mimeType,
-        displayName: source.displayName
-      });
-      uploaded.push({
-        fileName: uploadResult.file.name,
-        fileUri: uploadResult.file.uri,
-        mimeType: uploadResult.file.mimeType,
-        displayName: source.displayName
-      });
-    } finally {
-      if (fs.existsSync(tempFilePath)) {
-        fs.unlinkSync(tempFilePath);
-      }
+    const result = await processFilePayload(ai, source.payload, source.displayName, source.kind, {
+      inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+      alwaysUploadAudio: true
+    });
+    if (result.uploaded) {
+      uploaded.push(result.uploaded);
     }
   }
 
@@ -238,13 +312,17 @@ export async function checkGeminiFiles(
   apiKey: string,
   uploaded: UploadedFileRef[]
 ): Promise<{ ready: boolean; failed: boolean; readyCount: number; total: number }> {
-  const fileManager = new GoogleAIFileManager(apiKey);
+  if (uploaded.length === 0) {
+    return { ready: true, failed: false, readyCount: 0, total: 0 };
+  }
+
+  const ai = new GoogleGenAI({ apiKey });
   let readyCount = 0;
   let failed = false;
   const total = uploaded.length;
 
   for (const file of uploaded) {
-    const state = await fileManager.getFile(file.fileName);
+    const state = await ai.files.get({ name: file.fileName });
     if (state.state === 'FAILED') {
       failed = true;
     }
@@ -263,69 +341,120 @@ export async function checkGeminiFiles(
 
 export async function cleanupGeminiFiles(apiKey: string, uploaded: UploadedFileRef[]) {
   if (uploaded.length === 0) return;
-  const fileManager = new GoogleAIFileManager(apiKey);
+  const ai = new GoogleGenAI({ apiKey });
   await Promise.all(
     uploaded.map((file) =>
-      fileManager.deleteFile(file.fileName).catch((error) => {
+      ai.files.delete({ name: file.fileName }).catch((error) => {
         console.error('Gemini cleanup failed:', error);
       })
     )
   );
 }
 
-export async function generateStudyGuide(apiKey: string, input: StudyInput) {
-  const fileManager = new GoogleAIFileManager(apiKey);
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const rawTimeout = Number(process.env.GEMINI_PROCESS_TIMEOUT_MS ?? 0);
-  const maxPollingMs = Number.isFinite(rawTimeout) ? rawTimeout : 0;
-
-  const sources: { payload: FilePayload; displayName: string }[] = [];
-  if (input.audio) {
-    sources.push({ payload: input.audio, displayName: 'Lecture Audio' });
+const collectStreamText = async (
+  stream: AsyncGenerator<{ text?: string }>
+): Promise<string> => {
+  let fullText = '';
+  for await (const chunk of stream) {
+    if (chunk.text) {
+      fullText += chunk.text;
+    }
   }
-  (input.slides || []).forEach((slide, index) => {
-    sources.push({ payload: slide, displayName: `Lecture Slide ${index + 1}` });
+  return fullText;
+};
+
+const buildPromptText = (input: StudyInput): string =>
+  buildPrompt({
+    systemPrompt: getSystemInstruction(),
+    userContext: input.userContext,
+    hasAudio: Boolean(input.audio),
+    hasSlides: (input.slides || []).length > 0,
+    hasRawNotes: false
   });
 
-  if (sources.length === 0) {
-    throw new Error('No files provided for analysis.');
+const buildInlinePartsForSlides = async (
+  ai: GoogleGenAI,
+  slides: FilePayload[]
+): Promise<GeminiPart[]> => {
+  const parts: GeminiPart[] = [];
+  for (const slide of slides) {
+    const result = await processFilePayload(
+      ai,
+      slide,
+      'Lecture Slide',
+      'slide',
+      {
+        inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+        alwaysUploadAudio: true,
+        allowUpload: false
+      }
+    );
+    if (result.part?.inlineData) {
+      parts.push(result.part);
+    }
   }
+  return parts;
+};
 
+export async function generateStudyGuide(apiKey: string, input: StudyInput) {
+  const ai = new GoogleGenAI({ apiKey });
+  const parts: GeminiPart[] = [];
   const uploaded: UploadedFileRef[] = [];
 
   try {
-    for (const source of sources) {
-      const upload = await uploadAndWait(fileManager, source.payload, source.displayName, maxPollingMs);
-      uploaded.push(upload);
+    if (input.audio) {
+      const audioResult = await processFilePayload(ai, input.audio, 'Lecture Audio', 'audio', {
+        inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+        alwaysUploadAudio: true
+      });
+      if (audioResult.part) parts.push(audioResult.part);
+      if (audioResult.uploaded) uploaded.push(audioResult.uploaded);
     }
 
-    const model = genAI.getGenerativeModel({ model: getModelId(input.modelId) });
-    const parts = uploaded.map((file) => ({
-      fileData: {
-        mimeType: file.mimeType,
-        fileUri: file.fileUri
+    if (input.slides?.length) {
+      for (const [index, slide] of input.slides.entries()) {
+        const slideResult = await processFilePayload(ai, slide, `Lecture Slide ${index + 1}`, 'slide', {
+          inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+          alwaysUploadAudio: true
+        });
+        if (slideResult.part) parts.push(slideResult.part);
+        if (slideResult.uploaded) uploaded.push(slideResult.uploaded);
       }
-    }));
+    }
 
-    const prompt = buildPrompt({
-      systemPrompt: getSystemInstruction(),
-      userContext: input.userContext,
-      hasAudio: Boolean(input.audio),
-      hasSlides: uploaded.length > 0 && (input.slides || []).length > 0,
-      hasRawNotes: false
-    });
+    if (parts.length === 0) {
+      throw new Error('No files provided for analysis.');
+    }
 
-    const result = await withOverloadRetry(() => model.generateContent([...parts, { text: prompt }]));
+    parts.push({ text: buildPromptText(input) });
 
-    return result.response.text();
-  } finally {
-    await Promise.all(
-      uploaded.map((file) =>
-        fileManager.deleteFile(file.fileName).catch((error) => {
-          console.error('Gemini cleanup failed:', error);
-        })
-      )
+    const model = getModelId(input.modelId);
+    const responseStream = await withOverloadRetry(() =>
+      ai.models.generateContentStream({
+        model,
+        contents: { parts },
+        config: {
+          systemInstruction: getSystemInstruction(),
+          temperature: 0.2
+        }
+      })
     );
+
+    const fullText = await collectStreamText(responseStream);
+    if (!fullText) {
+      throw new Error('Received empty response from Gemini.');
+    }
+    return fullText;
+  } catch (error) {
+    if (isOverloadError(error)) {
+      throw new OverloadRetryError();
+    }
+    if (isTimeoutError(error)) {
+      throw new GenerationRetryError();
+    }
+    throw error;
+  } finally {
+    await cleanupGeminiFiles(apiKey, uploaded);
   }
 }
 
@@ -334,29 +463,41 @@ export async function generateStudyGuideFromUploaded(
   input: StudyInput,
   uploaded: UploadedFileRef[]
 ) {
-  const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: getModelId(input.modelId) });
-  const parts = uploaded.map((file) => ({
-    fileData: {
-      mimeType: file.mimeType,
-      fileUri: file.fileUri
-    }
-  }));
+  const ai = new GoogleGenAI({ apiKey });
+  const parts: GeminiPart[] = [];
 
-  const prompt = buildPrompt({
-    systemPrompt: getSystemInstruction(),
-    userContext: input.userContext,
-    hasAudio: Boolean(input.audio),
-    hasSlides: (input.slides || []).length > 0,
-    hasRawNotes: false
+  uploaded.forEach((file) => {
+    parts.push({
+      fileData: {
+        mimeType: file.mimeType,
+        fileUri: file.fileUri
+      }
+    });
   });
 
-  const timeoutMs = Number(process.env.GEMINI_GENERATION_TIMEOUT_MS ?? 45000);
+  if (input.slides?.length) {
+    const inlineParts = await buildInlinePartsForSlides(ai, input.slides);
+    parts.push(...inlineParts);
+  }
+
+  parts.push({ text: buildPromptText(input) });
+
+  const model = getModelId(input.modelId);
+
   try {
-    const result = await model.generateContent([...parts, { text: prompt }], {
-      timeout: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined
+    const responseStream = await ai.models.generateContentStream({
+      model,
+      contents: { parts },
+      config: {
+        systemInstruction: getSystemInstruction(),
+        temperature: 0.2
+      }
     });
-    return result.response.text();
+    const fullText = await collectStreamText(responseStream);
+    if (!fullText) {
+      throw new Error('Received empty response from Gemini.');
+    }
+    return fullText;
   } catch (error) {
     if (isOverloadError(error)) {
       throw new OverloadRetryError();

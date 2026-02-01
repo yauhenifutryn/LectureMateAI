@@ -78,7 +78,7 @@ describe('process handler', () => {
         audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
         slides: [],
         userContext: 'ctx',
-        modelId: 'gemini-2.5-pro'
+        modelId: 'gemini-3-pro-preview'
       }
     } as any;
 
@@ -86,6 +86,6 @@ describe('process handler', () => {
     await handler(req, res);
 
     const call = vi.mocked(setJobRecord).mock.calls[0]?.[0] as any;
-    expect(call?.request?.modelId).toBe('gemini-2.5-pro');
+    expect(call?.request?.modelId).toBe('gemini-3-pro-preview');
   });
 });

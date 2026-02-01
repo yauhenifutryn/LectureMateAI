@@ -1,3 +1,4 @@
+import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, recordDemoValidation, validateDemoCode } from '../_lib/access.js';
 

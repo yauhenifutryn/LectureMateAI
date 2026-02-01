@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import './_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { GoogleGenAI } from '@google/genai';
 import { toPublicError } from './_lib/errors.js';

@@ -34,7 +34,9 @@ const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<FileData | null>(null);
   const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
   const [userContext, setUserContext] = useState('');
-  const [modelId, setModelId] = useState<'gemini-2.5-flash' | 'gemini-2.5-pro'>('gemini-2.5-flash');
+  const [modelId, setModelId] = useState<'gemini-3-flash-preview' | 'gemini-3-pro-preview'>(
+    'gemini-3-flash-preview'
+  );
   const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
   const [uploadCheckpoint, setUploadCheckpoint] = useState<string | null>(null);
   
@@ -497,27 +499,27 @@ const App: React.FC = () => {
               <div className="flex flex-col sm:flex-row gap-3">
                 <button
                   type="button"
-                  onClick={() => setModelId('gemini-2.5-flash')}
+                  onClick={() => setModelId('gemini-3-flash-preview')}
                   className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
-                    modelId === 'gemini-2.5-flash'
+                    modelId === 'gemini-3-flash-preview'
                       ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
                       : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                   }`}
                 >
                   <div className="text-sm font-semibold">Fast</div>
-                  <div className="text-xs text-slate-500">Gemini 2.5 Flash. Best speed for most lectures.</div>
+                  <div className="text-xs text-slate-500">Gemini 3 Flash Preview. Best speed for most lectures.</div>
                 </button>
                 <button
                   type="button"
-                  onClick={() => setModelId('gemini-2.5-pro')}
+                  onClick={() => setModelId('gemini-3-pro-preview')}
                   className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
-                    modelId === 'gemini-2.5-pro'
+                    modelId === 'gemini-3-pro-preview'
                       ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
                       : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                   }`}
                 >
                   <div className="text-sm font-semibold">Pro</div>
-                  <div className="text-xs text-slate-500">Gemini 2.5 Pro. Higher quality, slower.</div>
+                  <div className="text-xs text-slate-500">Gemini 3 Pro Preview. Higher quality, slower.</div>
                 </button>
               </div>
             </div>

@@ -33,7 +33,7 @@ type ProcessBody = {
 };
 
 const PROCESSING_STALE_MS = 0;
-const ALLOWED_MODELS = new Set(['gemini-2.5-flash', 'gemini-2.5-pro']);
+const ALLOWED_MODELS = new Set(['gemini-3-flash-preview', 'gemini-3-pro-preview']);
 
 function parseBody(req: VercelRequest): ProcessBody {
   if (!req.body) return {};

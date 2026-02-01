@@ -1,3 +1,4 @@
+import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, requireAdmin } from '../_lib/access.js';
 import { fetchBlobStats } from '../_lib/blobAdmin.js';
