@@ -3,9 +3,10 @@ import fs from 'fs';
 import path from 'path';
 import { getSystemInstruction } from './prompts.js';
 import { buildPrompt } from './promptBuilder.js';
+import { downloadObjectBuffer } from './gcs.js';
 
 export type FilePayload = {
-  fileUrl: string;
+  objectName: string;
   mimeType: string;
 };
 
@@ -172,12 +173,7 @@ const buildTempPath = (mimeType?: string) => {
 };
 
 const fetchFileBuffer = async (source: FilePayload): Promise<Buffer> => {
-  const response = await fetch(source.fileUrl);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch file: ${response.statusText}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  return downloadObjectBuffer(source.objectName);
 };
 
 const uploadAndPoll = async (

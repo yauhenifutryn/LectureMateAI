@@ -2,10 +2,10 @@ import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, getAdminToken, getDemoCodeRemaining } from '../_lib/access.js';
 import { cleanupBlobUrls } from '../_lib/blobCleanup.js';
-import { validateBlobUrl } from '../_lib/validateBlobUrl.js';
+import { validateObjectName } from '../_lib/gcs.js';
 
 type DeleteBody = {
-  urls?: string[];
+  objects?: string[];
   demoCode?: string;
 };
 
@@ -41,18 +41,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
-    const { urls, demoCode } = parseBody(req);
-    if (!urls || urls.length === 0) {
-      return res.status(400).json({ error: { code: 'missing_urls', message: 'urls required.' } });
+    const { objects, demoCode } = parseBody(req);
+    if (!objects || objects.length === 0) {
+      return res
+        .status(400)
+        .json({ error: { code: 'missing_objects', message: 'objects required.' } });
     }
 
     await authorizeCleanup(req, demoCode);
 
-    const blobPrefix = process.env.BLOB_URL_PREFIX;
-    urls.forEach((url) => validateBlobUrl(url, blobPrefix));
+    objects.forEach((name) => validateObjectName(name));
 
-    await cleanupBlobUrls(urls);
-    return res.status(200).json({ deleted: urls.length });
+    await cleanupBlobUrls(objects);
+    return res.status(200).json({ deleted: objects.length });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });

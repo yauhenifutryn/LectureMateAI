@@ -1,4 +1,4 @@
-import { del } from '@vercel/blob';
+import { deleteObjects } from './gcs.js';
 
 type CleanupLogger = {
   error: (...args: unknown[]) => void;
@@ -10,7 +10,7 @@ export async function cleanupBlobUrls(
 ): Promise<void> {
   for (const url of urls) {
     try {
-      await del(url);
+      await deleteObjects([url]);
     } catch (error) {
       logger.error('Blob cleanup failed:', url, error);
     }

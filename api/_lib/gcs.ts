@@ -18,14 +18,105 @@ export const createSignedUploadUrl = async (
   objectName: string,
   contentType: string
 ): Promise<string> => {
-  const { Storage } = await import('@google-cloud/storage');
-  const storage = new Storage();
+  const storage = await getStorage();
   const bucketName = parseBucketEnv();
   const [url] = await storage.bucket(bucketName).file(objectName).getSignedUrl({
     version: 'v4',
     action: 'write',
-    expires: Date.now() + 15 * 60 * 1000,
+    expires: Date.now() + getUploadUrlTtlMs(),
     contentType
   });
   return url;
+};
+
+export const createSignedReadUrl = async (objectName: string): Promise<string> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  const [url] = await storage.bucket(bucketName).file(objectName).getSignedUrl({
+    version: 'v4',
+    action: 'read',
+    expires: Date.now() + getResultUrlTtlMs()
+  });
+  return url;
+};
+
+export const uploadTextObject = async (
+  objectName: string,
+  content: string,
+  contentType = 'text/plain'
+): Promise<void> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  await storage.bucket(bucketName).file(objectName).save(content, { contentType });
+};
+
+export const downloadObjectBuffer = async (objectName: string): Promise<Buffer> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  const [data] = await storage.bucket(bucketName).file(objectName).download();
+  return data;
+};
+
+export const deleteObjects = async (objectNames: string[]): Promise<void> => {
+  if (objectNames.length === 0) return;
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  const bucket = storage.bucket(bucketName);
+  await Promise.all(
+    objectNames.map(async (name) => {
+      if (!name) return;
+      try {
+        await bucket.file(name).delete({ ignoreNotFound: true });
+      } catch {
+        // best effort
+      }
+    })
+  );
+};
+
+export type ListedObject = { name: string; size: number };
+
+export const listObjects = async (
+  prefix: string,
+  pageToken?: string
+): Promise<{ files: ListedObject[]; nextPageToken?: string }> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  const [files, , response] = await storage.bucket(bucketName).getFiles({
+    prefix,
+    pageToken,
+    autoPaginate: false
+  });
+  const mapped = files.map((file) => ({
+    name: file.name,
+    size: Number(file.metadata.size ?? 0)
+  }));
+  return { files: mapped, nextPageToken: response?.nextPageToken };
+};
+
+export const validateObjectName = (objectName: string): void => {
+  if (!objectName || typeof objectName !== 'string') {
+    throw new Error('Invalid object name.');
+  }
+  if (objectName.includes('..') || objectName.startsWith('/') || objectName.includes('\\')) {
+    throw new Error('Invalid object name.');
+  }
+  if (!objectName.startsWith('uploads/') && !objectName.startsWith('results/')) {
+    throw new Error('Invalid object name.');
+  }
+};
+
+const getUploadUrlTtlMs = (): number => {
+  const raw = Number(process.env.GCS_UPLOAD_URL_TTL_SECONDS ?? 900);
+  return Number.isFinite(raw) && raw > 0 ? raw * 1000 : 15 * 60 * 1000;
+};
+
+const getResultUrlTtlMs = (): number => {
+  const raw = Number(process.env.GCS_RESULT_URL_TTL_SECONDS ?? 86400);
+  return Number.isFinite(raw) && raw > 0 ? raw * 1000 : 24 * 60 * 60 * 1000;
+};
+
+const getStorage = async () => {
+  const { Storage } = await import('@google-cloud/storage');
+  return new Storage();
 };

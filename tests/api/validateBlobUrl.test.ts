@@ -1,19 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { validateBlobUrl } from '../../api/_lib/validateBlobUrl';
+import { validateObjectName } from '../../api/_lib/gcs';
 
-describe('validateBlobUrl', () => {
-  it('accepts vercel blob host with allowed prefix', () => {
-    const url = 'https://public.blob.vercel-storage.com/lecture/file.mp3';
-    expect(() => validateBlobUrl(url, 'https://public.blob.vercel-storage.com/lecture/')).not.toThrow();
+describe('validateObjectName', () => {
+  it('accepts upload objects', () => {
+    expect(() => validateObjectName('uploads/job-1/audio.mp3')).not.toThrow();
   });
 
-  it('rejects non vercel blob hosts', () => {
-    const url = 'https://example.com/file.mp3';
-    expect(() => validateBlobUrl(url)).toThrow(/invalid blob host/i);
+  it('accepts result objects', () => {
+    expect(() => validateObjectName('results/job-1/study-guide.md')).not.toThrow();
   });
 
-  it('rejects url outside allowed prefix when provided', () => {
-    const url = 'https://public.blob.vercel-storage.com/other/file.mp3';
-    expect(() => validateBlobUrl(url, 'https://public.blob.vercel-storage.com/lecture/')).toThrow(/invalid blob prefix/i);
+  it('rejects traversal', () => {
+    expect(() => validateObjectName('../secrets')).toThrow(/invalid object name/i);
   });
 });

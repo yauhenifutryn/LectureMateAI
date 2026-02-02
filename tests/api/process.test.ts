@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import handler from '../../api/process';
-import { validateBlobUrl } from '../../api/_lib/validateBlobUrl';
+import { validateObjectName } from '../../api/_lib/gcs';
 import { setJobRecord, updateJobRecord } from '../../api/_lib/jobStore';
 
 vi.mock('../../api/_lib/access', () => ({
@@ -11,9 +11,13 @@ vi.mock('../../api/_lib/access', () => ({
   }
 }));
 
-vi.mock('../../api/_lib/validateBlobUrl', () => ({
-  validateBlobUrl: vi.fn()
-}));
+vi.mock('../../api/_lib/gcs', async () => {
+  const actual = await vi.importActual('../../api/_lib/gcs');
+  return {
+    ...actual,
+    validateObjectName: vi.fn()
+  };
+});
 
 vi.mock('../../api/_lib/jobStore', () => ({
   buildJobId: () => 'job-123',
@@ -44,7 +48,7 @@ const buildRes = () => {
 
 describe('process handler', () => {
   beforeEach(() => {
-    vi.mocked(validateBlobUrl).mockReset();
+    vi.mocked(validateObjectName).mockReset();
     vi.mocked(setJobRecord).mockReset();
     vi.mocked(updateJobRecord).mockReset();
     process.env.WORKER_URL = 'https://worker.example.com';
@@ -61,8 +65,8 @@ describe('process handler', () => {
     const req = {
       method: 'POST',
       body: {
-        audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
-        slides: [{ fileUrl: 'https://blob/slide.pdf', mimeType: 'application/pdf' }],
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+        slides: [{ objectName: 'uploads/job/slide.pdf', mimeType: 'application/pdf' }],
         userContext: 'ctx'
       }
     } as any;
@@ -70,8 +74,8 @@ describe('process handler', () => {
     const res = buildRes();
     await handler(req, res);
 
-    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/audio.mp3', undefined);
-    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/slide.pdf', undefined);
+    expect(vi.mocked(validateObjectName)).toHaveBeenCalledWith('uploads/job/audio.mp3');
+    expect(vi.mocked(validateObjectName)).toHaveBeenCalledWith('uploads/job/slide.pdf');
     expect(vi.mocked(setJobRecord)).toHaveBeenCalledOnce();
   });
 
@@ -79,7 +83,7 @@ describe('process handler', () => {
     const req = {
       method: 'POST',
       body: {
-        slides: [{ fileUrl: 'https://blob/slide.pdf', mimeType: 'application/pdf' }],
+        slides: [{ objectName: 'uploads/job/slide.pdf', mimeType: 'application/pdf' }],
         userContext: 'ctx'
       }
     } as any;
@@ -87,7 +91,7 @@ describe('process handler', () => {
     const res = buildRes();
     await handler(req, res);
 
-    expect(vi.mocked(validateBlobUrl)).toHaveBeenCalledWith('https://blob/slide.pdf', undefined);
+    expect(vi.mocked(validateObjectName)).toHaveBeenCalledWith('uploads/job/slide.pdf');
     expect(vi.mocked(setJobRecord)).toHaveBeenCalledOnce();
   });
 
@@ -95,7 +99,7 @@ describe('process handler', () => {
     const req = {
       method: 'POST',
       body: {
-        audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
         slides: [],
         userContext: 'ctx',
         modelId: 'gemini-3-pro-preview'
@@ -116,7 +120,7 @@ describe('process handler', () => {
     const req = {
       method: 'POST',
       body: {
-        audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
         slides: [],
         userContext: 'ctx'
       }

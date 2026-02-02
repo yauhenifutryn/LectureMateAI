@@ -1,34 +1,32 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchBlobStats, purgeAllBlobs } from '../../api/_lib/blobAdmin';
 
-const listMock = vi.fn();
-const delMock = vi.fn();
+const listObjectsMock = vi.fn();
+const deleteObjectsMock = vi.fn();
 
-vi.mock('@vercel/blob', () => ({
-  list: (...args: unknown[]) => listMock(...args),
-  del: (...args: unknown[]) => delMock(...args)
+vi.mock('../../api/_lib/gcs', () => ({
+  listObjects: (...args: unknown[]) => listObjectsMock(...args),
+  deleteObjects: (...args: unknown[]) => deleteObjectsMock(...args)
 }));
 
 describe('blobAdmin helpers', () => {
   beforeEach(() => {
-    listMock.mockReset();
-    delMock.mockReset();
+    listObjectsMock.mockReset();
+    deleteObjectsMock.mockReset();
   });
 
   it('aggregates blob stats across pages', async () => {
-    listMock
+    listObjectsMock
       .mockResolvedValueOnce({
-        blobs: [
-          { size: 100, url: 'https://blob/a' },
-          { size: 200, url: 'https://blob/b' }
+        files: [
+          { name: 'uploads/a', size: 100 },
+          { name: 'uploads/b', size: 200 }
         ],
-        cursor: 'page-2',
-        hasMore: true
+        nextPageToken: 'page-2'
       })
       .mockResolvedValueOnce({
-        blobs: [{ size: 50, url: 'https://blob/c' }],
-        cursor: undefined,
-        hasMore: false
+        files: [{ name: 'uploads/c', size: 50 }],
+        nextPageToken: undefined
       });
 
     const stats = await fetchBlobStats();
@@ -37,36 +35,34 @@ describe('blobAdmin helpers', () => {
   });
 
   it('purges all blobs and returns count', async () => {
-    listMock
+    listObjectsMock
       .mockResolvedValueOnce({
-        blobs: [{ size: 100, url: 'https://blob/a' }],
-        cursor: 'page-2',
-        hasMore: true
+        files: [{ name: 'uploads/a', size: 100 }],
+        nextPageToken: 'page-2'
       })
       .mockResolvedValueOnce({
-        blobs: [
-          { size: 200, url: 'https://blob/b' },
-          { size: 300, url: 'https://blob/c' }
+        files: [
+          { name: 'uploads/b', size: 200 },
+          { name: 'uploads/c', size: 300 }
         ],
-        cursor: undefined,
-        hasMore: false
+        nextPageToken: undefined
       });
-    delMock.mockResolvedValue(undefined);
+    deleteObjectsMock.mockResolvedValue(undefined);
 
     const deleted = await purgeAllBlobs();
 
     expect(deleted).toBe(3);
-    expect(delMock).toHaveBeenCalledTimes(2);
-    expect(delMock).toHaveBeenCalledWith(['https://blob/a']);
-    expect(delMock).toHaveBeenCalledWith(['https://blob/b', 'https://blob/c']);
+    expect(deleteObjectsMock).toHaveBeenCalledTimes(2);
+    expect(deleteObjectsMock).toHaveBeenCalledWith(['uploads/a']);
+    expect(deleteObjectsMock).toHaveBeenCalledWith(['uploads/b', 'uploads/c']);
   });
 
   it('returns zero when no blobs exist', async () => {
-    listMock.mockResolvedValueOnce({ blobs: [], cursor: undefined, hasMore: false });
+    listObjectsMock.mockResolvedValueOnce({ files: [], nextPageToken: undefined });
 
     const deleted = await purgeAllBlobs();
 
     expect(deleted).toBe(0);
-    expect(delMock).not.toHaveBeenCalled();
+    expect(deleteObjectsMock).not.toHaveBeenCalled();
   });
 });

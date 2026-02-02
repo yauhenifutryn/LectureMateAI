@@ -10,13 +10,13 @@ import {
   setJobRecord,
   updateJobRecord
 } from '../_lib/jobStore.js';
-import { validateBlobUrl } from '../_lib/validateBlobUrl.js';
+import { validateObjectName } from '../_lib/gcs.js';
 import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
 
 export const config = { maxDuration: 60 };
 
 type FilePayload = {
-  fileUrl: string;
+  objectName: string;
   mimeType: string;
 };
 
@@ -106,21 +106,20 @@ async function dispatchToWorker(
 
 async function handleCreate(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
   const { audio, slides = [], userContext, demoCode, modelId } = body;
-  const blobPrefix = process.env.BLOB_URL_PREFIX;
 
   try {
     const access = await authorizeProcess(req, demoCode);
 
-    if ((!audio || !audio.fileUrl || !audio.mimeType) && slides.length === 0) {
+    if ((!audio || !audio.objectName || !audio.mimeType) && slides.length === 0) {
       throw new Error('Missing audio or slide payload.');
     }
 
-    if (audio?.fileUrl) {
-      validateBlobUrl(audio.fileUrl, blobPrefix);
+    if (audio?.objectName) {
+      validateObjectName(audio.objectName);
     }
 
     slides.forEach((slide) => {
-      validateBlobUrl(slide.fileUrl, blobPrefix);
+      validateObjectName(slide.objectName);
     });
 
     const jobId = buildJobId();
@@ -131,7 +130,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
       status: 'queued',
       stage: 'queued',
       request: {
-        audio: audio?.fileUrl && audio?.mimeType ? audio : undefined,
+        audio: audio?.objectName && audio?.mimeType ? audio : undefined,
         slides,
         userContext,
         modelId: modelId && ALLOWED_MODELS.has(modelId) ? modelId : undefined

@@ -11,9 +11,13 @@ vi.mock('@vercel/kv', () => ({
   kv: kvMock
 }));
 
-vi.mock('../../api/_lib/validateBlobUrl', () => ({
-  validateBlobUrl: vi.fn()
-}));
+vi.mock('../../api/_lib/gcs', async () => {
+  const actual = await vi.importActual('../../api/_lib/gcs');
+  return {
+    ...actual,
+    validateObjectName: vi.fn()
+  };
+});
 
 vi.mock('../../api/_lib/blobCleanup', () => ({
   cleanupBlobUrls: vi.fn()
@@ -42,7 +46,7 @@ describe('process job creation', () => {
       method: 'POST',
       headers: {},
       body: {
-        audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
         slides: [],
         userContext: 'ctx',
         demoCode: 'demo'
@@ -57,7 +61,7 @@ describe('process job creation', () => {
     expect(kvMock.set).toHaveBeenCalledTimes(1);
     const [, stored] = kvMock.set.mock.calls[0];
     expect(stored.status).toBe('queued');
-    expect(stored.request.audio.fileUrl).toBe('https://blob/audio.mp3');
+    expect(stored.request.audio.objectName).toBe('uploads/job/audio.mp3');
     expect(stored.access.mode).toBe('demo');
   });
 });

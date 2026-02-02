@@ -55,7 +55,7 @@ const buildJob = (jobId: string) => ({
   status: 'processing' as const,
   stage: 'uploading' as const,
   request: {
-    audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
+    audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
     slides: [],
     userContext: 'ctx'
   },

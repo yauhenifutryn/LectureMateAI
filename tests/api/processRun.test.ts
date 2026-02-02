@@ -49,8 +49,8 @@ const buildJob = (jobId: string) => ({
   status: 'queued' as const,
   stage: 'queued' as const,
   request: {
-    audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
-    slides: [{ fileUrl: 'https://blob/slide.pdf', mimeType: 'application/pdf' }],
+    audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+    slides: [{ objectName: 'uploads/job/slide.pdf', mimeType: 'application/pdf' }],
     userContext: 'ctx'
   },
   access: {

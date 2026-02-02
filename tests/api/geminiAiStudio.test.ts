@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 vi.mock('@google/genai', () => ({
   GoogleGenAI: class {}
@@ -8,25 +8,21 @@ import { processFilePayload } from '../../api/_lib/gemini';
 
 const MB = 1024 * 1024;
 
-const makeFetchResponse = (bytes: number) => ({
-  ok: true,
-  arrayBuffer: async () => Buffer.alloc(bytes)
-});
+vi.mock('../../api/_lib/gcs', () => ({
+  downloadObjectBuffer: vi.fn(async (objectName: string) => {
+    if (objectName.includes('small')) {
+      return Buffer.alloc(2 * MB);
+    }
+    return Buffer.alloc(20 * MB);
+  })
+}));
 
 describe('processFilePayload', () => {
-  const originalFetch = global.fetch;
-
-  beforeEach(() => {
-    global.fetch = vi.fn();
-  });
-
   afterEach(() => {
-    global.fetch = originalFetch;
     vi.restoreAllMocks();
   });
 
   it('inlines small non-audio files under the inline threshold', async () => {
-    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeFetchResponse(2 * MB));
     const ai = {
       files: {
         upload: vi.fn(),
@@ -36,7 +32,7 @@ describe('processFilePayload', () => {
 
     const result = await processFilePayload(
       ai as any,
-      { fileUrl: 'https://example.com/slide.pdf', mimeType: 'application/pdf' },
+      { objectName: 'uploads/small-slide.pdf', mimeType: 'application/pdf' },
       'Lecture Slide 1',
       'slide',
       {
@@ -53,7 +49,6 @@ describe('processFilePayload', () => {
   });
 
   it('inlines audio when under the inline threshold to match AI Studio behavior', async () => {
-    (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeFetchResponse(2 * MB));
     const ai = {
       files: {
         upload: vi.fn().mockResolvedValue({
@@ -72,7 +67,7 @@ describe('processFilePayload', () => {
 
     const result = await processFilePayload(
       ai as any,
-      { fileUrl: 'https://example.com/audio.m4a', mimeType: 'audio/m4a' },
+      { objectName: 'uploads/small-audio.m4a', mimeType: 'audio/m4a' },
       'Lecture Audio',
       'audio',
       {

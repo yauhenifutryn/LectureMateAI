@@ -49,7 +49,7 @@ describe('blob delete endpoint', () => {
     expect(res.statusCode).toBe(405);
   });
 
-  it('rejects missing urls', async () => {
+  it('rejects missing objects', async () => {
     const req = createReq({ body: {} });
     const res = createRes();
 
@@ -60,7 +60,7 @@ describe('blob delete endpoint', () => {
 
   it('rejects unauthorized requests', async () => {
     vi.mocked(getDemoCodeRemaining).mockResolvedValue(null);
-    const req = createReq({ body: { urls: ['https://demo.blob.vercel-storage.com/a'] } });
+    const req = createReq({ body: { objects: ['uploads/a'] } });
     const res = createRes();
 
     await handler(req, res);
@@ -70,24 +70,18 @@ describe('blob delete endpoint', () => {
 
   it('allows demo codes and deletes urls', async () => {
     vi.mocked(getDemoCodeRemaining).mockResolvedValue(2);
-    const req = createReq({
-      body: { urls: ['https://demo.blob.vercel-storage.com/a'], demoCode: 'CODE' }
-    });
+    const req = createReq({ body: { objects: ['uploads/a'], demoCode: 'CODE' } });
     const res = createRes();
 
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith([
-      'https://demo.blob.vercel-storage.com/a'
-    ]);
+    expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith(['uploads/a']);
   });
 
   it('allows cleanup when demo code is exhausted', async () => {
     vi.mocked(getDemoCodeRemaining).mockResolvedValue(0);
-    const req = createReq({
-      body: { urls: ['https://demo.blob.vercel-storage.com/a'], demoCode: 'CODE' }
-    });
+    const req = createReq({ body: { objects: ['uploads/a'], demoCode: 'CODE' } });
     const res = createRes();
 
     await handler(req, res);
@@ -99,7 +93,7 @@ describe('blob delete endpoint', () => {
     process.env.ADMIN_PASSWORD = 'secret';
     const req = createReq({
       headers: { authorization: 'Bearer secret' },
-      body: { urls: ['https://demo.blob.vercel-storage.com/a'] }
+      body: { objects: ['uploads/a'] }
     });
     const res = createRes();
 

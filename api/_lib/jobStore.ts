@@ -7,7 +7,7 @@ export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 export type JobStage = 'queued' | 'dispatching' | 'uploading' | 'polling' | 'generating';
 
 export type FilePayload = {
-  fileUrl: string;
+  objectName: string;
   mimeType: string;
 };
 

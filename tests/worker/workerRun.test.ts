@@ -61,7 +61,7 @@ vi.mock('../../api/_lib/gemini', () => ({
 }));
 
 vi.mock('../../api/_lib/resultStorage', () => ({
-  storeResultMarkdown: vi.fn(async () => 'https://blob/results.md')
+  storeResultMarkdown: vi.fn(async () => 'https://gcs/results.md')
 }));
 
 vi.mock('../../api/_lib/blobCleanup', () => ({
@@ -73,8 +73,8 @@ const buildJob = (jobId: string) => ({
   status: 'queued' as const,
   stage: 'queued' as const,
   request: {
-    audio: { fileUrl: 'https://blob/audio.mp3', mimeType: 'audio/mpeg' },
-    slides: [{ fileUrl: 'https://blob/slide.pdf', mimeType: 'application/pdf' }],
+    audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+    slides: [{ objectName: 'uploads/job/slide.pdf', mimeType: 'application/pdf' }],
     userContext: 'ctx'
   },
   access: {
@@ -107,7 +107,7 @@ describe('worker runJob', () => {
       ...buildJob(jobId),
       status: 'completed',
       stage: 'generating',
-      resultUrl: 'https://blob/results.md'
+      resultUrl: 'https://gcs/results.md'
     });
 
     const result = await runJob(jobId);
@@ -123,7 +123,7 @@ describe('worker runJob', () => {
     const result = await runJob(jobId);
 
     expect(result.status).toBe('completed');
-    expect(result.resultUrl).toBe('https://blob/results.md');
+    expect(result.resultUrl).toBe('https://gcs/results.md');
     const updated = await getJobRecord(jobId);
     expect(updated?.status).toBe('completed');
   });

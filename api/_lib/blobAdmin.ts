@@ -1,4 +1,4 @@
-import { del, list } from '@vercel/blob';
+import { deleteObjects, listObjects } from './gcs.js';
 
 type BlobStats = {
   totalSize: number;
@@ -13,13 +13,12 @@ export async function fetchBlobStats(): Promise<BlobStats> {
   let cursor: string | undefined;
 
   do {
-    const result = await list({ cursor, limit: PAGE_LIMIT });
-    for (const blob of result.blobs) {
-      totalSize += blob.size;
+    const result = await listObjects('uploads/', cursor);
+    for (const file of result.files) {
+      totalSize += file.size;
       fileCount += 1;
     }
-    if (!result.hasMore) break;
-    cursor = result.cursor;
+    cursor = result.nextPageToken;
   } while (cursor);
 
   return { totalSize, fileCount };
@@ -30,14 +29,13 @@ export async function purgeAllBlobs(): Promise<number> {
   let cursor: string | undefined;
 
   do {
-    const result = await list({ cursor, limit: PAGE_LIMIT });
-    const urls = result.blobs.map((blob) => blob.url);
-    if (urls.length > 0) {
-      await del(urls);
-      deleted += urls.length;
+    const result = await listObjects('uploads/', cursor);
+    const names = result.files.map((file) => file.name);
+    if (names.length > 0) {
+      await deleteObjects(names);
+      deleted += names.length;
     }
-    if (!result.hasMore) break;
-    cursor = result.cursor;
+    cursor = result.nextPageToken;
   } while (cursor);
 
   return deleted;

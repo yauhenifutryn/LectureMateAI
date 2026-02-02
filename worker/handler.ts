@@ -82,8 +82,8 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
   }
 
   const cleanupUrls = [
-    ...(job.request.audio?.fileUrl ? [job.request.audio.fileUrl] : []),
-    ...job.request.slides.map((slide) => slide.fileUrl)
+    ...(job.request.audio?.objectName ? [job.request.audio.objectName] : []),
+    ...job.request.slides.map((slide) => slide.objectName)
   ];
 
   let shouldCleanupBlob = false;
@@ -100,7 +100,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       });
 
       const sources: {
-        payload: { fileUrl: string; mimeType: string };
+        payload: { objectName: string; mimeType: string };
         displayName: string;
         kind: 'audio' | 'slide';
       }[] = [];
@@ -180,10 +180,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       throw new Error('Transcript missing in output.');
     }
 
-    const resultUrl = await storeResultMarkdown(
-      resultText,
-      job.request.audio?.fileUrl || job.request.slides[0]?.fileUrl
-    );
+    const resultUrl = await storeResultMarkdown(resultText, jobId);
 
     const completed = await updateJobRecord(jobId, {
       status: 'completed',
