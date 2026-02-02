@@ -58,8 +58,22 @@ const handler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(result));
   } catch (error) {
-    console.error('Worker run failed:', error);
+    const message = error instanceof Error ? error.message : 'Unknown error.';
+    const stack = error instanceof Error ? error.stack : undefined;
+    console.error('Worker run failed:', message, stack ?? '');
     const publicError = toPublicError(error);
+    if (message.includes('Job not found')) {
+      res.statusCode = 404;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: { code: 'job_not_found', message: 'Job not found.' } }));
+      return;
+    }
+    if (message.includes('KV not configured')) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ error: { code: 'kv_not_configured', message } }));
+      return;
+    }
     res.statusCode = 500;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify({ error: publicError }));

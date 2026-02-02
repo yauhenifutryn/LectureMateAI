@@ -54,7 +54,9 @@ function getProcessingStaleMs(): number {
   return raw;
 }
 
-async function dispatchToWorker(jobId: string): Promise<{ ok: boolean; status: number }> {
+async function dispatchToWorker(
+  jobId: string
+): Promise<{ ok: boolean; status: number; error?: { code?: string; message?: string } }> {
   const workerUrl = process.env.WORKER_URL;
   const workerSecret = process.env.WORKER_SHARED_SECRET;
   if (!workerUrl || !workerSecret) {
@@ -75,7 +77,23 @@ async function dispatchToWorker(jobId: string): Promise<{ ok: boolean; status: n
       body: JSON.stringify({ jobId }),
       signal: controller.signal
     });
-    return { ok: response.ok, status: response.status };
+    let payload: { error?: { code?: string; message?: string } } | null = null;
+    try {
+      payload = (await response.json()) as { error?: { code?: string; message?: string } };
+    } catch {
+      payload = null;
+    }
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: payload?.error ?? {
+          code: 'dispatch_failed',
+          message: `Worker dispatch failed (${response.status}).`
+        }
+      };
+    }
+    return { ok: true, status: response.status };
   } finally {
     clearTimeout(timeout);
   }
@@ -137,7 +155,7 @@ function dispatchInBackground(jobId: string) {
   void dispatchToWorker(jobId)
     .then(async (dispatch) => {
       if (dispatch.ok) return;
-      const retryError = {
+      const retryError = dispatch.error ?? {
         code: 'dispatch_failed',
         message: 'Worker dispatch failed. Try again shortly.'
       };
