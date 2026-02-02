@@ -9,16 +9,6 @@ interface ProcessingStateProps {
   logTone?: 'info' | 'warning' | 'error';
 }
 
-const MESSAGES = [
-  "Uploading audio & slides for analysis...",
-  "Transcribing 50+ minutes of audio...",
-  "Reading slide content...",
-  "Connecting concepts to timestamps...",
-  "Synthesizing the 'Master Tutor' guide...",
-  "Formatting markdown tables...",
-  "Finalizing analysis..."
-];
-
 const ProcessingState: React.FC<ProcessingStateProps> = ({
   onCancel,
   uploadCheckpoint,
@@ -26,7 +16,6 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
   logTone = 'info'
 }) => {
   const [progress, setProgress] = useState(0);
-  const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const startTimeRef = useRef<number>(Date.now());
 
@@ -39,12 +28,7 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
       setElapsedSeconds(getElapsedSeconds(startTimeRef.current, Date.now()));
     }, 1000);
 
-    // 2. Message Rotator (Change message every 8 seconds)
-    const messageInterval = setInterval(() => {
-      setMessageIndex(prev => (prev + 1) % MESSAGES.length);
-    }, 8000);
-
-    // 3. Asymptotic Progress Bar Logic
+    // 2. Asymptotic Progress Bar Logic
     const progressInterval = setInterval(() => {
       setProgress(oldProgress => {
         let increment = 0;
@@ -67,7 +51,6 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
 
     return () => {
       clearInterval(timerInterval);
-      clearInterval(messageInterval);
       clearInterval(progressInterval);
     };
   }, []);
@@ -109,21 +92,6 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
         <span>Time Elapsed: {formatTime(elapsedSeconds)}</span>
       </div>
 
-      {logMessage && (
-        <div
-          className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4 border ${
-            logTone === 'error'
-              ? 'bg-red-50 text-red-700 border-red-100'
-              : logTone === 'warning'
-                ? 'bg-amber-50 text-amber-700 border-amber-100'
-                : 'bg-slate-50 text-slate-600 border-slate-200'
-          }`}
-        >
-          <Icons.AlertCircle size={12} />
-          <span>{logMessage}</span>
-        </div>
-      )}
-
       {uploadCheckpoint && (
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full text-xs font-medium text-emerald-700 mb-4 border border-emerald-100">
           <Icons.Check size={12} />
@@ -133,12 +101,22 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
 
       {/* Progress Bar Container */}
       <div className="w-full max-w-md space-y-3">
-        {/* Dynamic Status Text */}
-        <div className="h-6 overflow-hidden relative">
-          <p key={messageIndex} className="text-sm font-medium text-primary-700 animate-fade-in-up transition-all">
-            {MESSAGES[messageIndex]}
-          </p>
-        </div>
+        {/* Real-time Status */}
+        {logMessage && (
+          <div className="min-h-[1.5rem]">
+            <p
+              className={`text-sm font-medium animate-fade-in-up transition-all ${
+                logTone === 'error'
+                  ? 'text-red-600'
+                  : logTone === 'warning'
+                    ? 'text-amber-600'
+                    : 'text-primary-700'
+              }`}
+            >
+              {logMessage}
+            </p>
+          </div>
+        )}
 
         {/* The Bar */}
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
