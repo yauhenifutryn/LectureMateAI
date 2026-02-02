@@ -23,6 +23,8 @@ import { safeRemoveItem, safeSetItem } from './utils/storage';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
+type ProcessingLogTone = 'info' | 'warning' | 'error';
+type ProcessingLog = { message: string; tone: ProcessingLogTone };
 
 const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
 const ACCESS_STORAGE_KEY = 'lecturemate_access_v1';
@@ -44,6 +46,7 @@ const App: React.FC = () => {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('study_guide');
   const [error, setError] = useState<string | null>(null);
+  const [processingLog, setProcessingLog] = useState<ProcessingLog | null>(null);
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -56,6 +59,25 @@ const App: React.FC = () => {
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
   const audioRequired = slideFiles.length === 0;
+
+  const formatStageMessage = (stage?: string, status?: string) => {
+    const normalized = stage || status || '';
+    const mapping: Record<string, string> = {
+      queued: 'Queued. Waiting for worker pickup.',
+      dispatching: 'Dispatching job to worker.',
+      uploading: 'Uploading files.',
+      processing: 'Processing lecture.',
+      generating: 'Generating study guide.',
+      polling: 'Waiting for results.'
+    };
+    return mapping[normalized] || `Processing: ${normalized || 'working'}.`;
+  };
+
+  const toLogTone = (code?: string): ProcessingLogTone => {
+    if (!code) return 'info';
+    if (['dispatch_failed', 'generation_retry', 'overloaded_retry'].includes(code)) return 'warning';
+    return 'error';
+  };
 
   const handleAuthorize = (next: AccessContext) => {
     setAccess(next);
@@ -179,6 +201,7 @@ const App: React.FC = () => {
       setActiveTab(startState.activeTab);
       setError(startState.error);
       setUploadCheckpoint(null);
+      setProcessingLog(null);
 
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
@@ -192,6 +215,18 @@ const App: React.FC = () => {
           setPendingBlobUrls(urls);
           setUploadCheckpoint(formatUploadCheckpoint(urls.length));
         },
+        onStatusUpdate: (statusUpdate) => {
+          if (statusUpdate?.error?.message) {
+            setProcessingLog({
+              message: statusUpdate.error.message,
+              tone: toLogTone(statusUpdate.error.code)
+            });
+            return;
+          }
+
+          const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
+          setProcessingLog({ message, tone: 'info' });
+        },
         access: access || undefined,
         modelId
       });
@@ -199,6 +234,7 @@ const App: React.FC = () => {
       setStatus(AppStatus.COMPLETED);
       setPendingBlobUrls([]);
       setUploadCheckpoint(null);
+      setProcessingLog(null);
       setChatMessages([]);
       chatSessionRef.current = null; 
     } catch (err: any) {
@@ -217,12 +253,14 @@ const App: React.FC = () => {
       setError(message);
       setStatus(AppStatus.ERROR);
       setUploadCheckpoint(null);
+      setProcessingLog(null);
     }
   };
 
   const handleCancelProcessing = () => {
     if (window.confirm("Stop processing? The current analysis will be lost.")) {
       setStatus(AppStatus.IDLE);
+      setProcessingLog(null);
     }
   };
 
@@ -237,6 +275,7 @@ const App: React.FC = () => {
     setActiveTab('study_guide');
     setStatus(AppStatus.IDLE);
     setError(null);
+    setProcessingLog(null);
     setChatMessages([]);
     chatSessionRef.current = null;
     safeRemoveItem(localStorage, LOCAL_STORAGE_KEY);
@@ -246,6 +285,7 @@ const App: React.FC = () => {
   const handleLock = () => {
     void cleanupPendingUploads(access);
     setAccess(null);
+    setProcessingLog(null);
   };
 
   const handleCancelReset = () => setShowResetConfirm(false);
@@ -559,7 +599,12 @@ const App: React.FC = () => {
 
         {/* Processing State */}
         {(status === AppStatus.UPLOADING || status === AppStatus.PROCESSING) && (
-          <ProcessingState onCancel={handleCancelProcessing} uploadCheckpoint={uploadCheckpoint} />
+          <ProcessingState
+            onCancel={handleCancelProcessing}
+            uploadCheckpoint={uploadCheckpoint}
+            logMessage={processingLog?.message}
+            logTone={processingLog?.tone}
+          />
         )}
 
         {/* Results View */}

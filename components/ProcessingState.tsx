@@ -5,6 +5,8 @@ import { getElapsedSeconds } from '../utils/time';
 interface ProcessingStateProps {
   onCancel: () => void;
   uploadCheckpoint?: string | null;
+  logMessage?: string | null;
+  logTone?: 'info' | 'warning' | 'error';
 }
 
 const MESSAGES = [
@@ -17,7 +19,12 @@ const MESSAGES = [
   "Finalizing analysis..."
 ];
 
-const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel, uploadCheckpoint }) => {
+const ProcessingState: React.FC<ProcessingStateProps> = ({
+  onCancel,
+  uploadCheckpoint,
+  logMessage,
+  logTone = 'info'
+}) => {
   const [progress, setProgress] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -101,6 +108,21 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({ onCancel, uploadCheck
         <Icons.BookOpen size={12} />
         <span>Time Elapsed: {formatTime(elapsedSeconds)}</span>
       </div>
+
+      {logMessage && (
+        <div
+          className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4 border ${
+            logTone === 'error'
+              ? 'bg-red-50 text-red-700 border-red-100'
+              : logTone === 'warning'
+                ? 'bg-amber-50 text-amber-700 border-amber-100'
+                : 'bg-slate-50 text-slate-600 border-slate-200'
+          }`}
+        >
+          <Icons.AlertCircle size={12} />
+          <span>{logMessage}</span>
+        </div>
+      )}
 
       {uploadCheckpoint && (
         <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 rounded-full text-xs font-medium text-emerald-700 mb-4 border border-emerald-100">

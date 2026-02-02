@@ -58,6 +58,7 @@ type AnalyzeStage = 'uploading' | 'processing';
 type AnalyzeOptions = {
   onStageChange?: (stage: AnalyzeStage) => void;
   onUploadComplete?: (urls: string[]) => void;
+  onStatusUpdate?: (status: JobStatusResponse) => void;
   access?: AccessContext;
   modelId?: string;
 };
@@ -189,12 +190,14 @@ const pollJobStatus = async (
   getStatus: (jobId: string, access?: AccessContext) => Promise<JobStatusResponse>,
   wait: (ms: number) => Promise<void>,
   runJob?: (jobId: string, access?: AccessContext) => Promise<void>,
+  onStatusUpdate?: (status: JobStatusResponse) => void,
   maxAttempts = 120
 ): Promise<JobStatusResponse> => {
   let delayMs = 1000;
 
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
     const status = await getStatus(jobId, access);
+    onStatusUpdate?.(status);
     if (status.error && !isTransientStatusError(status)) {
       return status;
     }
@@ -325,13 +328,14 @@ export const createAnalyzeAudioLecture =
     });
     options?.onStageChange?.('processing');
 
-    const status = await pollJobStatus(
-      jobResponse.jobId,
-      options?.access,
-      getJobStatus,
-      sleepFn || sleep,
-      startJob
-    );
+  const status = await pollJobStatus(
+    jobResponse.jobId,
+    options?.access,
+    getJobStatus,
+    sleepFn || sleep,
+    startJob,
+    options?.onStatusUpdate
+  );
 
     if (status.error) {
       throw new Error(status.error.message || 'Processing failed.');
