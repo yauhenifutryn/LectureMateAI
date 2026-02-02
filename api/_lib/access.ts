@@ -247,3 +247,34 @@ export async function authorizeChat(
 
   return { mode: 'demo', code: normalizeDemoCode(demoCode), remaining };
 }
+
+export async function authorizeUpload(
+  req: VercelRequest,
+  demoCode?: string
+): Promise<AccessResult> {
+  const adminPassword = process.env.ADMIN_PASSWORD || '';
+  const token = getAdminToken(req);
+
+  if (adminPassword && token && token === adminPassword) {
+    await logAccessEvent({ at: new Date().toISOString(), mode: 'admin', action: 'auth' });
+    return { mode: 'admin' };
+  }
+
+  if (!demoCode) {
+    throw new AccessError('missing_access_code', 'Access code required.', 401);
+  }
+
+  const remaining = await validateDemoCode(demoCode);
+  if (remaining === null) {
+    throw new AccessError('invalid_access_code', 'Invalid or exhausted demo code.', 401);
+  }
+
+  await logAccessEvent({
+    at: new Date().toISOString(),
+    mode: 'demo',
+    action: 'auth',
+    code: normalizeDemoCode(demoCode)
+  });
+
+  return { mode: 'demo', code: normalizeDemoCode(demoCode), remaining };
+}
