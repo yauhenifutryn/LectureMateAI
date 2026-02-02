@@ -35,6 +35,11 @@ type ProcessBody = {
 const PROCESSING_STALE_MS = 0;
 const ALLOWED_MODELS = new Set(['gemini-3-flash-preview', 'gemini-3-pro-preview']);
 
+const buildInputSummary = (audio?: FilePayload, slides: FilePayload[] = []) => ({
+  audio: Boolean(audio),
+  slidesCount: slides.length
+});
+
 function parseBody(req: VercelRequest): ProcessBody {
   if (!req.body) return {};
   if (typeof req.body === 'string') {
@@ -211,7 +216,8 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         progress: job.progress,
         resultUrl: job.resultUrl,
         preview: job.preview,
-        error: job.error
+        error: job.error,
+        inputs: buildInputSummary(job.request.audio, job.request.slides)
       });
     }
 
@@ -223,7 +229,8 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         progress: job.progress,
         resultUrl: job.resultUrl,
         preview: job.preview,
-        error: job.error
+        error: job.error,
+        inputs: buildInputSummary(job.request.audio, job.request.slides)
       });
     }
 
@@ -240,7 +247,8 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       jobId,
       status: updated.status,
       stage: updated.stage,
-      progress: updated.progress
+      progress: updated.progress,
+      inputs: buildInputSummary(job.request.audio, job.request.slides)
     });
   } catch (error) {
     if (error instanceof AccessError) {
@@ -311,7 +319,8 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
       progress: job.progress,
       resultUrl: job.resultUrl,
       preview: job.preview,
-      error: job.error
+      error: job.error,
+      inputs: buildInputSummary(job.request.audio, job.request.slides)
     });
   } catch (error) {
     if (error instanceof AccessError) {

@@ -73,6 +73,12 @@ const App: React.FC = () => {
     return mapping[normalized] || `Processing: ${normalized || 'working'}.`;
   };
 
+  const formatInputSummary = (inputs?: { audio: boolean; slidesCount: number }) => {
+    if (!inputs) return '';
+    const audioLabel = inputs.audio ? 'audio' : 'no audio';
+    return `Inputs: ${audioLabel}, slides ${inputs.slidesCount}.`;
+  };
+
   const toLogTone = (code?: string): ProcessingLogTone => {
     if (!code) return 'info';
     if (['dispatch_failed', 'generation_retry', 'overloaded_retry'].includes(code)) return 'warning';
@@ -225,7 +231,9 @@ const App: React.FC = () => {
           }
 
           const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
-          setProcessingLog({ message, tone: 'info' });
+          const inputSummary = formatInputSummary(statusUpdate.inputs);
+          const combined = inputSummary ? `${message} ${inputSummary}` : message;
+          setProcessingLog({ message: combined, tone: 'info' });
         },
         access: access || undefined,
         modelId

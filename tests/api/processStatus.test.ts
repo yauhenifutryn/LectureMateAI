@@ -115,7 +115,11 @@ describe('process status endpoint', () => {
         status: 'processing',
         stage: 'uploading',
         progress: 45,
-        preview: 'preview text'
+        preview: 'preview text',
+        inputs: {
+          audio: true,
+          slidesCount: 0
+        }
       })
     );
   });

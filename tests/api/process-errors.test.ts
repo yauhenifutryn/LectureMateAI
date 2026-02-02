@@ -11,4 +11,9 @@ describe('toPublicError', () => {
     const err = new Error('Gemini processing timed out.');
     expect(toPublicError(err).code).toBe('processing_timeout');
   });
+
+  it('maps transcript missing', () => {
+    const err = new Error('Transcript missing in output.');
+    expect(toPublicError(err).code).toBe('transcript_missing');
+  });
 });

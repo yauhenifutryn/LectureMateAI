@@ -5,7 +5,8 @@ import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
-  cleanupGeminiFiles
+  cleanupGeminiFiles,
+  getModelId
 } from '../api/_lib/gemini.js';
 import { cleanupBlobUrls } from '../api/_lib/blobCleanup.js';
 import { toPublicError } from '../api/_lib/errors.js';
@@ -38,6 +39,23 @@ const getPollTimeoutMs = (): number => {
 const buildPreview = (text: string, maxChars = 2000): string => {
   if (!text) return '';
   return text.slice(0, maxChars).trim();
+};
+
+const TRANSCRIPT_SEPARATOR = '===TRANSCRIPT===';
+const SLIDES_SEPARATOR = '===SLIDES===';
+const RAW_NOTES_SEPARATOR = '===RAW_NOTES===';
+
+const extractTranscript = (text: string): string | null => {
+  const transIdx = text.indexOf(TRANSCRIPT_SEPARATOR);
+  if (transIdx === -1) return null;
+  const after = transIdx + TRANSCRIPT_SEPARATOR.length;
+  const slidesIdx = text.indexOf(SLIDES_SEPARATOR);
+  const rawIdx = text.indexOf(RAW_NOTES_SEPARATOR);
+  const endCandidates = [slidesIdx, rawIdx].filter((idx) => idx !== -1 && idx > after);
+  const end = endCandidates.length ? Math.min(...endCandidates) : text.length;
+  const transcript = text.substring(after, end).trim();
+  if (!transcript) return null;
+  return transcript;
 };
 
 export async function runJob(jobId: string): Promise<WorkerResult> {
@@ -145,6 +163,8 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       error: undefined
     });
 
+    console.info('Worker model:', getModelId(job.request.modelId));
+
     const resultText = await generateStudyGuideFromUploaded(
       apiKey,
       {
@@ -155,6 +175,10 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       },
       uploaded
     );
+
+    if (!extractTranscript(resultText)) {
+      throw new Error('Transcript missing in output.');
+    }
 
     const resultUrl = await storeResultMarkdown(
       resultText,

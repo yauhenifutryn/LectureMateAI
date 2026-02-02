@@ -20,6 +20,10 @@ type JobStatusResponse = {
   progress?: number;
   resultUrl?: string;
   preview?: string;
+  inputs?: {
+    audio: boolean;
+    slidesCount: number;
+  };
   error?: {
     code?: string;
     message?: string;

@@ -39,6 +39,7 @@ vi.mock('../../api/_lib/gemini', () => ({
     readyCount: 1,
     total: 1
   })),
+  getModelId: vi.fn((modelId?: string) => modelId ?? 'gemini-3-flash-preview'),
   generateStudyGuideFromUploaded: vi.fn(
     async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
   ),
@@ -125,6 +126,37 @@ describe('worker runJob', () => {
     expect(result.resultUrl).toBe('https://blob/results.md');
     const updated = await getJobRecord(jobId);
     expect(updated?.status).toBe('completed');
+  });
+
+  it('fails when transcript is missing from output', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateStudyGuideFromUploaded).mockResolvedValueOnce(
+      '===STUDY_GUIDE===Guide===TRANSCRIPT==='
+    );
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('failed');
+    const updated = await getJobRecord(jobId);
+    expect(updated?.error?.code).toBe('transcript_missing');
+  });
+
+  it('logs the model id used for generation', async () => {
+    const jobId = buildJobId();
+    await setJobRecord({
+      ...buildJob(jobId),
+      request: {
+        ...buildJob(jobId).request,
+        modelId: 'gemini-3-pro-preview'
+      }
+    });
+    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+
+    await runJob(jobId);
+
+    expect(infoSpy).toHaveBeenCalledWith('Worker model:', 'gemini-3-pro-preview');
+    infoSpy.mockRestore();
   });
 
   it('requeues when Gemini is overloaded', async () => {
