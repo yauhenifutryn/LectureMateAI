@@ -1,10 +1,27 @@
 import http from 'node:http';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promises as fs } from 'node:fs';
 import { buildVercelRequest, createVercelResponse } from './adapter.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-const distDir = path.join(process.cwd(), 'dist');
+const runtimeDir = path.dirname(fileURLToPath(import.meta.url));
+const distDir = path.resolve(runtimeDir, '../../dist');
+const knownContentTypes: Record<string, string> = {
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.map': 'application/json',
+  '.json': 'application/json',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2'
+};
 
 export function resolveStaticPath(urlPath: string) {
   if (urlPath === '/' || urlPath === '') return path.join(distDir, 'index.html');
@@ -105,17 +122,25 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse) {
 async function handleStatic(req: http.IncomingMessage, res: http.ServerResponse) {
   const urlPath = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`).pathname;
   const filePath = resolveStaticPath(urlPath);
+  const ext = path.extname(filePath).toLowerCase();
+  const expectsFile = ext.length > 0;
 
   try {
     const stat = await fs.stat(filePath);
     if (stat.isFile()) {
       const data = await fs.readFile(filePath);
-      res.writeHead(200);
+      const contentType = knownContentTypes[ext];
+      res.writeHead(200, contentType ? { 'Content-Type': contentType } : undefined);
       res.end(data);
       return;
     }
   } catch (error) {
-    // fallthrough to index
+    if (expectsFile) {
+      console.warn('Static file not found.', { urlPath, filePath, distDir, cwd: process.cwd() });
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.end('Not found');
+      return;
+    }
   }
 
   const indexPath = path.join(distDir, 'index.html');
