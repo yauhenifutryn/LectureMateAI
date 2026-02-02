@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createRunAnalysisWithCleanup } from '../../services/geminiService';
 
 const fakeUpload = async (file: File) => ({
-  fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+  objectName: `uploads/job-1/${file.name}`,
   mimeType: file.type || 'audio/mpeg'
 });
 
@@ -60,9 +60,6 @@ describe('runAnalysisWithCleanup', () => {
 
     await expect(run(audio, [], 'context')).rejects.toThrow('fail');
 
-    expect(cleanup).toHaveBeenCalledWith(
-      ['https://public.blob.vercel-storage.com/lectures/audio.mp3'],
-      undefined
-    );
+    expect(cleanup).toHaveBeenCalledWith(['uploads/job-1/audio.mp3'], undefined);
   });
 });

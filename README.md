@@ -8,15 +8,16 @@
 2. Create [.env.local](.env.local) with server-only keys:
    ```
    GEMINI_API_KEY=your_gemini_api_key
-   BLOB_READ_WRITE_TOKEN=your_vercel_blob_token
-   BLOB_URL_PREFIX=https://<store>.public.blob.vercel-storage.com/lectures/
+   GCS_BUCKET=your_gcs_bucket_name
+   GCS_UPLOAD_URL_TTL_SECONDS=900
+   GCS_RESULT_URL_TTL_SECONDS=604800
    SYSTEM_INSTRUCTIONS=your_master_tutor_prompt
    ADMIN_PASSWORD=your_admin_password
    ```
-   `BLOB_URL_PREFIX` is optional but recommended for stricter validation.
+   `GCS_UPLOAD_URL_TTL_SECONDS` and `GCS_RESULT_URL_TTL_SECONDS` are optional.
    `SYSTEM_INSTRUCTIONS` and `ADMIN_PASSWORD` must be set for production.
    Recommended prompt template: `prompts/system_instructions.txt`.
-   Vercel KV will add `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `KV_REST_API_READ_ONLY_TOKEN` automatically.
+   For KV, set `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `KV_REST_API_READ_ONLY_TOKEN` (Upstash or Vercel KV).
 3. Run the app:
    `npm run dev`
 

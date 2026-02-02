@@ -1,30 +1,30 @@
 import { describe, expect, it, vi } from 'vitest';
 import { cleanupBlobUrls } from '../../api/_lib/blobCleanup';
 
-const delMock = vi.fn();
+const deleteMock = vi.fn();
 
-vi.mock('@vercel/blob', () => ({
-  del: (...args: unknown[]) => delMock(...args)
+vi.mock('../../api/_lib/gcs', () => ({
+  deleteObjects: (...args: unknown[]) => deleteMock(...args)
 }));
 
 describe('cleanupBlobUrls', () => {
   it('deletes each blob url', async () => {
-    delMock.mockResolvedValue(undefined);
+    deleteMock.mockResolvedValue(undefined);
     const logger = { error: vi.fn() };
 
-    await cleanupBlobUrls(['https://blob/a', 'https://blob/b'], logger);
+    await cleanupBlobUrls(['uploads/job-1/a.mp3', 'uploads/job-1/b.pdf'], logger);
 
-    expect(delMock).toHaveBeenCalledTimes(2);
-    expect(delMock).toHaveBeenCalledWith('https://blob/a');
-    expect(delMock).toHaveBeenCalledWith('https://blob/b');
+    expect(deleteMock).toHaveBeenCalledTimes(2);
+    expect(deleteMock).toHaveBeenCalledWith(['uploads/job-1/a.mp3']);
+    expect(deleteMock).toHaveBeenCalledWith(['uploads/job-1/b.pdf']);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
   it('logs failures without throwing', async () => {
-    delMock.mockRejectedValueOnce(new Error('fail')).mockResolvedValueOnce(undefined);
+    deleteMock.mockRejectedValueOnce(new Error('fail')).mockResolvedValueOnce(undefined);
     const logger = { error: vi.fn() };
 
-    await cleanupBlobUrls(['https://blob/a', 'https://blob/b'], logger);
+    await cleanupBlobUrls(['uploads/job-1/a.mp3', 'uploads/job-1/b.pdf'], logger);
 
     expect(logger.error).toHaveBeenCalledTimes(1);
   });

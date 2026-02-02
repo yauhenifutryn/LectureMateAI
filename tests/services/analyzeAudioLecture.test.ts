@@ -4,8 +4,8 @@ import { createAnalyzeAudioLecture } from '../../services/geminiService';
 describe('analyzeAudioLecture', () => {
   it('signals processing stage after job starts', async () => {
     const stages: string[] = [];
-    const fakeUpload = async () => ({
-      fileUrl: 'https://public.blob.vercel-storage.com/lectures/test.mp3',
+    const fakeUpload = async (_file: File) => ({
+      objectName: 'uploads/job-1/test.mp3',
       mimeType: 'audio/mpeg'
     });
     const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
@@ -44,7 +44,7 @@ describe('analyzeAudioLecture', () => {
   it('provides uploaded blob urls for cleanup', async () => {
     const uploaded: string[] = [];
     const fakeUpload = async (file: File) => ({
-      fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+      objectName: `uploads/job-1/${file.name}`,
       mimeType: 'audio/mpeg'
     });
     const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
@@ -73,16 +73,13 @@ describe('analyzeAudioLecture', () => {
       onUploadComplete: (urls) => uploaded.push(...urls)
     });
 
-    expect(uploaded).toEqual([
-      'https://public.blob.vercel-storage.com/lectures/audio.mp3',
-      'https://public.blob.vercel-storage.com/lectures/slide.pdf'
-    ]);
+    expect(uploaded).toEqual(['uploads/job-1/audio.mp3', 'uploads/job-1/slide.pdf']);
   });
 
   it('allows slide-only analysis', async () => {
     const payloads: any[] = [];
     const fakeUpload = async (file: File) => ({
-      fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+      objectName: `uploads/job-1/${file.name}`,
       mimeType: file.type || 'application/pdf'
     });
     const createJob = vi.fn().mockImplementation(async (payload: any) => {
@@ -117,8 +114,8 @@ describe('analyzeAudioLecture', () => {
   });
 
   it('fails fast when status returns an error', async () => {
-    const fakeUpload = async () => ({
-      fileUrl: 'https://public.blob.vercel-storage.com/lectures/test.mp3',
+    const fakeUpload = async (_file: File) => ({
+      objectName: 'uploads/job-1/test.mp3',
       mimeType: 'audio/mpeg'
     });
     const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
@@ -143,8 +140,8 @@ describe('analyzeAudioLecture', () => {
   });
 
   it('keeps polling when a transient dispatch error is reported', async () => {
-    const fakeUpload = async () => ({
-      fileUrl: 'https://public.blob.vercel-storage.com/lectures/test.mp3',
+    const fakeUpload = async (_file: File) => ({
+      objectName: 'uploads/job-1/test.mp3',
       mimeType: 'audio/mpeg'
     });
     const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
@@ -179,7 +176,7 @@ describe('analyzeAudioLecture', () => {
   it('passes selected modelId to job creation', async () => {
     const payloads: any[] = [];
     const fakeUpload = async (file: File) => ({
-      fileUrl: `https://public.blob.vercel-storage.com/lectures/${file.name}`,
+      objectName: `uploads/job-1/${file.name}`,
       mimeType: file.type || 'audio/mpeg'
     });
     const createJob = vi.fn().mockImplementation(async (payload: any) => {

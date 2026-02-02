@@ -3,7 +3,7 @@ import { cleanupUploadedFiles } from '../../services/geminiService';
 import type { AccessContext } from '../../types';
 
 describe('cleanupUploadedFiles', () => {
-  it('skips when no urls', async () => {
+  it('skips when no objects', async () => {
     const fetchMock = vi.fn();
     // @ts-expect-error test override
     global.fetch = fetchMock;
@@ -18,13 +18,13 @@ describe('cleanupUploadedFiles', () => {
     // @ts-expect-error test override
     global.fetch = fetchMock;
 
-    await cleanupUploadedFiles(['https://blob/a'], { mode: 'demo', token: 'CODE' } as AccessContext);
+    await cleanupUploadedFiles(['uploads/job-1/audio.mp3'], { mode: 'demo', token: 'CODE' } as AccessContext);
 
     const [, options] = fetchMock.mock.calls[0];
     const body = JSON.parse(options.body as string);
 
     expect(body.demoCode).toBe('CODE');
-    expect(body.urls).toEqual(['https://blob/a']);
+    expect(body.objects).toEqual(['uploads/job-1/audio.mp3']);
   });
 
   it('uses authorization header for admin', async () => {
@@ -32,7 +32,7 @@ describe('cleanupUploadedFiles', () => {
     // @ts-expect-error test override
     global.fetch = fetchMock;
 
-    await cleanupUploadedFiles(['https://blob/a'], { mode: 'admin', token: 'SECRET' } as AccessContext);
+    await cleanupUploadedFiles(['uploads/job-1/audio.mp3'], { mode: 'admin', token: 'SECRET' } as AccessContext);
 
     const [, options] = fetchMock.mock.calls[0];
     expect(options.headers.Authorization).toBe('Bearer SECRET');

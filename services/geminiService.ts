@@ -1,8 +1,7 @@
-import { upload } from '@vercel/blob/client';
 import type { AccessContext, ChatMessage, ChatSession, AnalysisResult } from '../types';
 
 type UploadedFile = {
-  fileUrl: string;
+  objectName: string;
   mimeType: string;
 };
 
@@ -47,28 +46,72 @@ const getMimeType = (file: File) => {
 const sanitizeFileName = (name: string) =>
   name.replace(/[^\x20-\x7E]/g, '').replace(/[^\w.-]/g, '_');
 
-const uploadToBlob = async (file: File): Promise<UploadedFile> => {
-  const safeName = sanitizeFileName(file.name || 'upload');
-  const pathname = `lectures/${Date.now()}-${safeName}`;
-  const blob = await upload(pathname, file, {
-    access: 'public',
-    handleUploadUrl: '/api/upload'
+type UploadContext = {
+  jobId: string;
+  access?: AccessContext;
+};
+
+const requestUploadUrl = async (
+  file: File,
+  context: UploadContext
+): Promise<{ uploadUrl: string; objectName: string }> => {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const body: { filename: string; mimeType: string; jobId: string; demoCode?: string } = {
+    filename: sanitizeFileName(file.name || 'upload'),
+    mimeType: getMimeType(file),
+    jobId: context.jobId
+  };
+
+  if (context.access?.mode === 'admin') {
+    headers.Authorization = `Bearer ${context.access.token}`;
+  } else if (context.access?.mode === 'demo') {
+    body.demoCode = context.access.token;
+  }
+
+  const response = await fetch('/api/gcs/upload-url', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body)
   });
-  return { fileUrl: blob.url, mimeType: getMimeType(file) };
+
+  const data = (await response.json()) as { uploadUrl?: string; objectName?: string; error?: { message?: string } };
+  if (!response.ok || !data.uploadUrl || !data.objectName) {
+    throw new Error(data.error?.message || 'Failed to prepare upload.');
+  }
+
+  return { uploadUrl: data.uploadUrl, objectName: data.objectName };
+};
+
+const uploadToGcs = async (file: File, context: UploadContext): Promise<UploadedFile> => {
+  const { uploadUrl, objectName } = await requestUploadUrl(file, context);
+  const mimeType = getMimeType(file);
+  const response = await fetch(uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': mimeType
+    },
+    body: file
+  });
+
+  if (!response.ok) {
+    throw new Error('Upload failed.');
+  }
+
+  return { objectName, mimeType };
 };
 
 type AnalyzeStage = 'uploading' | 'processing';
 
 type AnalyzeOptions = {
   onStageChange?: (stage: AnalyzeStage) => void;
-  onUploadComplete?: (urls: string[]) => void;
+  onUploadComplete?: (objectNames: string[]) => void;
   onStatusUpdate?: (status: JobStatusResponse) => void;
   access?: AccessContext;
   modelId?: string;
 };
 
 type AnalyzeDependencies = {
-  uploadToBlob: (file: File) => Promise<UploadedFile>;
+  uploadToBlob: (file: File, context: UploadContext) => Promise<UploadedFile>;
   createJob: (
     payload: { audio?: UploadedFile; slides: UploadedFile[]; userContext: string; modelId?: string },
     access?: AccessContext
@@ -80,7 +123,7 @@ type AnalyzeDependencies = {
 };
 
 type CleanupDependencies = AnalyzeDependencies & {
-  cleanupUploadedFiles: (urls: string[], access?: AccessContext) => Promise<void>;
+  cleanupUploadedFiles: (objectNames: string[], access?: AccessContext) => Promise<void>;
 };
 
 const buildHeaders = (access?: AccessContext): Record<string, string> => {
@@ -301,13 +344,18 @@ export const createAnalyzeAudioLecture =
     }
 
     options?.onStageChange?.('uploading');
-    const audio = audioFile ? await uploadFn(audioFile) : undefined;
-    const slides = await Promise.all(slideFiles.map((file) => uploadFn(file)));
-    const uploadedUrls = [
-      ...(audio ? [audio.fileUrl] : []),
-      ...slides.map((slide) => slide.fileUrl)
+    const uploadBatchId =
+      typeof globalThis.crypto?.randomUUID === 'function'
+        ? globalThis.crypto.randomUUID()
+        : `upload-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const uploadContext = { jobId: uploadBatchId, access: options?.access };
+    const audio = audioFile ? await uploadFn(audioFile, uploadContext) : undefined;
+    const slides = await Promise.all(slideFiles.map((file) => uploadFn(file, uploadContext)));
+    const uploadedObjects = [
+      ...(audio ? [audio.objectName] : []),
+      ...slides.map((slide) => slide.objectName)
     ];
-    options?.onUploadComplete?.(uploadedUrls);
+    options?.onUploadComplete?.(uploadedObjects);
 
     const jobResponse = await createJob(
       {
@@ -354,7 +402,7 @@ export const createAnalyzeAudioLecture =
   };
 
 export const analyzeAudioLecture = createAnalyzeAudioLecture({
-  uploadToBlob,
+  uploadToBlob: uploadToGcs,
   createJob: createJobRequest,
   startJob: startJobRequest,
   getJobStatus: getJobStatusRequest,
@@ -378,7 +426,7 @@ export const createRunAnalysisWithCleanup =
     userContext: string,
     options?: AnalyzeOptions
   ): Promise<AnalysisResult> => {
-    let uploadedUrls: string[] = [];
+    let uploadedObjects: string[] = [];
 
     try {
       const analyze = createAnalyzeAudioLecture({
@@ -391,27 +439,27 @@ export const createRunAnalysisWithCleanup =
       });
       return await analyze(audioFile, slideFiles, userContext, {
         ...options,
-        onUploadComplete: (urls) => {
-          uploadedUrls = urls;
-          options?.onUploadComplete?.(urls);
+        onUploadComplete: (objects) => {
+          uploadedObjects = objects;
+          options?.onUploadComplete?.(objects);
         }
       });
     } catch (error) {
-      if (uploadedUrls.length > 0) {
-        await cleanupFn(uploadedUrls, options?.access);
+      if (uploadedObjects.length > 0) {
+        await cleanupFn(uploadedObjects, options?.access);
       }
       throw error;
     }
   };
 
 export const cleanupUploadedFiles = async (
-  urls: string[],
+  objects: string[],
   access?: AccessContext
 ): Promise<void> => {
-  if (!urls || urls.length === 0) return;
+  if (!objects || objects.length === 0) return;
 
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const payload: { urls: string[]; demoCode?: string } = { urls };
+  const payload: { objects: string[]; demoCode?: string } = { objects };
 
   if (access?.mode === 'admin') {
     headers.Authorization = `Bearer ${access.token}`;
@@ -431,7 +479,7 @@ export const cleanupUploadedFiles = async (
 };
 
 export const analyzeAudioLectureWithCleanup = createRunAnalysisWithCleanup({
-  uploadToBlob,
+  uploadToBlob: uploadToGcs,
   createJob: createJobRequest,
   startJob: startJobRequest,
   getJobStatus: getJobStatusRequest,
