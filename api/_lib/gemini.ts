@@ -235,7 +235,7 @@ export async function processFilePayload(
 
   const buffer = await fetchFileBuffer(payload);
   const sizeBytes = buffer.byteLength;
-  const shouldInline = kind !== 'audio' && sizeBytes <= inlineThresholdBytes;
+  const shouldInline = sizeBytes <= inlineThresholdBytes;
   if (shouldInline) {
     return {
       part: {

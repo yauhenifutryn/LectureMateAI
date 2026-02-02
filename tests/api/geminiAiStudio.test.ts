@@ -52,7 +52,7 @@ describe('processFilePayload', () => {
     expect(result.uploaded).toBeUndefined();
   });
 
-  it('uploads audio even when under the inline threshold', async () => {
+  it('inlines audio when under the inline threshold to match AI Studio behavior', async () => {
     (global.fetch as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(makeFetchResponse(2 * MB));
     const ai = {
       files: {
@@ -83,8 +83,8 @@ describe('processFilePayload', () => {
       }
     );
 
-    expect(ai.files.upload).toHaveBeenCalledTimes(1);
-    expect(result.part.fileData?.mimeType).toBe('audio/m4a');
-    expect(result.uploaded?.fileName).toBe('files/abc');
+    expect(ai.files.upload).not.toHaveBeenCalled();
+    expect(result.part.inlineData?.mimeType).toBe('audio/m4a');
+    expect(result.uploaded).toBeUndefined();
   });
 });
