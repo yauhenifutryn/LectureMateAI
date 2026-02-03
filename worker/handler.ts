@@ -11,6 +11,7 @@ import {
 } from '../api/_lib/gemini.js';
 import { cleanupBlobUrls } from '../api/_lib/blobCleanup.js';
 import { toPublicError } from '../api/_lib/errors.js';
+import { recordJobHistory } from '../api/_lib/jobHistory.js';
 import { storeResultMarkdown, storeTranscriptText } from '../api/_lib/resultStorage.js';
 import { getJobRecord, updateJobRecord } from '../api/_lib/jobStore.js';
 import { getMaxUploadBytes, getObjectSizeBytes } from '../api/_lib/gcs.js';
@@ -203,6 +204,9 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       transcriptUrl: transcriptUrl || undefined,
       preview: buildPreview(resultText),
       error: undefined
+    });
+    await recordJobHistory(completed).catch((error) => {
+      console.error('Failed to record job history:', error);
     });
 
     shouldCleanupBlob = cleanupUrls.length > 0;

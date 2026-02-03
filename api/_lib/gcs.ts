@@ -23,7 +23,7 @@ export const buildResultObjectName = (jobId: string): string =>
   `results/${jobId}/study-guide.md`;
 
 export const buildTranscriptObjectName = (jobId: string): string =>
-  `results/${jobId}/transcript.txt`;
+  `results/${jobId}/transcript.md`;
 
 export const createSignedUploadUrl = async (
   objectName: string,

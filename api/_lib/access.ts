@@ -18,7 +18,7 @@ export type AccessResult = {
 type AccessEvent = {
   at: string;
   mode: AccessMode;
-  action: 'process' | 'chat' | 'auth';
+  action: 'process' | 'chat' | 'auth' | 'history';
   code?: string;
 };
 
@@ -242,6 +242,37 @@ export async function authorizeChat(
     at: new Date().toISOString(),
     mode: 'demo',
     action: 'chat',
+    code: normalizeDemoCode(demoCode)
+  });
+
+  return { mode: 'demo', code: normalizeDemoCode(demoCode), remaining };
+}
+
+export async function authorizeHistory(
+  req: VercelRequest,
+  demoCode?: string
+): Promise<AccessResult> {
+  const adminPassword = process.env.ADMIN_PASSWORD || '';
+  const token = getAdminToken(req);
+
+  if (adminPassword && token && token === adminPassword) {
+    await logAccessEvent({ at: new Date().toISOString(), mode: 'admin', action: 'history' });
+    return { mode: 'admin' };
+  }
+
+  if (!demoCode) {
+    throw new AccessError('missing_access_code', 'Access code required.', 401);
+  }
+
+  const remaining = await validateDemoCode(demoCode);
+  if (remaining === null) {
+    throw new AccessError('invalid_access_code', 'Invalid or exhausted demo code.', 401);
+  }
+
+  await logAccessEvent({
+    at: new Date().toISOString(),
+    mode: 'demo',
+    action: 'history',
     code: normalizeDemoCode(demoCode)
   });
 

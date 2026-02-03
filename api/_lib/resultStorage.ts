@@ -19,6 +19,6 @@ export async function storeTranscriptText(
 ): Promise<string | null> {
   if (!content) return null;
   const objectName = buildTranscriptObjectName(jobId);
-  await uploadTextObject(objectName, content, 'text/plain');
+  await uploadTextObject(objectName, content, 'text/markdown');
   return createSignedReadUrl(objectName);
 }

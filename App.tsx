@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext } from './types';
+import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext, HistoryItem } from './types';
 import {
   analyzeAudioLectureWithCleanup,
   cleanupUploadedFiles,
@@ -43,6 +43,11 @@ const App: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [processingLog, setProcessingLog] = useState<ProcessingLog | null>(null);
   const [processingModel, setProcessingModel] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [hasAutoOpenedHistory, setHasAutoOpenedHistory] = useState(false);
+  const [copiedTranscript, setCopiedTranscript] = useState(false);
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -55,6 +60,7 @@ const App: React.FC = () => {
   const isAdminRoute =
     typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
   const audioRequired = slideFiles.length === 0;
+  const isDemo = access?.mode === 'demo';
 
   useEffect(() => {
     if (access || typeof window === 'undefined') return;
@@ -140,6 +146,12 @@ const App: React.FC = () => {
     }
   }, [result, access]);
 
+  useEffect(() => {
+    if (!access || isAdminRoute) return;
+    setHasAutoOpenedHistory(false);
+    void loadHistory(true);
+  }, [access?.mode, access?.token, isAdminRoute]);
+
   const handleAudioSelect = (files: FileData[]) => {
     if (files.length > 0) {
       setAudioFile(files[0]);
@@ -199,6 +211,9 @@ const App: React.FC = () => {
       setProcessingLog(null);
       setProcessingModel(null);
 
+      const resolvedModelId =
+        isDemo && modelId === 'gemini-3-pro-preview' ? 'gemini-3-flash-preview' : modelId;
+
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
       const analysis = await analyzeAudioLectureWithCleanup(audioFile?.file || null, slides, userContext, {
@@ -229,7 +244,7 @@ const App: React.FC = () => {
           }
         },
         access: access || undefined,
-        modelId
+        modelId: resolvedModelId
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
@@ -239,6 +254,7 @@ const App: React.FC = () => {
       setProcessingModel(null);
       setChatMessages([]);
       chatSessionRef.current = null; 
+      void loadHistory(false);
     } catch (err: any) {
       console.error(err);
       const message = err.message || "An unexpected error occurred during analysis.";
@@ -283,6 +299,7 @@ const App: React.FC = () => {
     setProcessingModel(null);
     setChatMessages([]);
     chatSessionRef.current = null;
+    setHasAutoOpenedHistory(false);
     setShowResetConfirm(false);
   };
 
@@ -291,6 +308,9 @@ const App: React.FC = () => {
     setAccess(null);
     setProcessingLog(null);
     setProcessingModel(null);
+    setHistory([]);
+    setHistoryError(null);
+    setHasAutoOpenedHistory(false);
   };
 
   const handleCancelReset = () => setShowResetConfirm(false);
@@ -310,15 +330,87 @@ const App: React.FC = () => {
 
   const handleDownloadTranscript = () => {
     if (!result) return;
-    const blob = new Blob([result.transcript], { type: 'text/plain' });
+    const blob = new Blob([result.transcript], { type: 'text/markdown' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Transcript_${audioFile?.file.name.split('.')[0] || 'Lecture'}.txt`;
+    a.download = `Transcript_${audioFile?.file.name.split('.')[0] || 'Lecture'}.md`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleCopyTranscript = async () => {
+    if (!result?.transcript) return;
+    try {
+      await navigator.clipboard.writeText(result.transcript);
+      setCopiedTranscript(true);
+      setTimeout(() => setCopiedTranscript(false), 2000);
+    } catch (error) {
+      console.error('Failed to copy transcript:', error);
+    }
+  };
+
+  const loadHistory = async (autoOpen = true) => {
+    if (!access) return;
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      const headers: Record<string, string> = {};
+      let url = '/api/results/list?limit=20';
+      if (access.mode === 'admin') {
+        headers.Authorization = `Bearer ${access.token}`;
+      } else {
+        url += `&demoCode=${encodeURIComponent(access.token)}`;
+      }
+      const response = await fetch(url, { headers, cache: 'no-store' });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.error?.message || 'Unable to load history.');
+      }
+      const items = (data.items || []) as HistoryItem[];
+      setHistory(items);
+      if (autoOpen && !result && items.length > 0 && !hasAutoOpenedHistory) {
+        setHasAutoOpenedHistory(true);
+        await handleOpenHistory(items[0]);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load history.';
+      setHistoryError(message);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const handleOpenHistory = async (item: HistoryItem) => {
+    if (!item.resultUrl) return;
+    setError(null);
+    setStatus(AppStatus.PROCESSING);
+    try {
+      const resultResponse = await fetch(item.resultUrl, { cache: 'no-store' });
+      if (!resultResponse.ok) {
+        throw new Error('Failed to fetch previous result.');
+      }
+      const resultText = await resultResponse.text();
+      let transcriptText = '(No transcript provided.)';
+      if (item.transcriptUrl) {
+        const transcriptResponse = await fetch(item.transcriptUrl, { cache: 'no-store' });
+        if (transcriptResponse.ok) {
+          transcriptText = await transcriptResponse.text();
+        }
+      }
+      setResult({
+        studyGuide: resultText.trim(),
+        transcript: transcriptText.trim() || '(No transcript provided.)'
+      });
+      setActiveTab('study_guide');
+      setStatus(AppStatus.COMPLETED);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to load previous result.';
+      setError(message);
+      setStatus(AppStatus.ERROR);
+    }
   };
 
   if (isAdminRoute) {
@@ -346,7 +438,7 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-3 text-xs sm:text-sm text-slate-500 font-medium">
             <span className="hidden sm:inline">The Master Tutor</span>
-            <span className="sm:hidden">Tutor</span>
+            <span className="sm:hidden">The Master Tutor</span>
             <button
               type="button"
               onClick={handleLock}
@@ -567,17 +659,94 @@ const App: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setModelId('gemini-3-pro-preview')}
+                  disabled={isDemo}
                   className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
                     modelId === 'gemini-3-pro-preview'
                       ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
                       : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
-                  }`}
+                  } ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  <div className="text-sm font-semibold">Pro</div>
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    Pro
+                    {isDemo && (
+                      <span className="text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                        Admin Only
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-500">Gemini 3 Pro Preview. Higher quality, slower.</div>
                 </button>
               </div>
+              {isDemo && (
+                <p className="text-xs text-slate-500 mt-3">
+                  Pro model is reserved for admin accounts. Demo sessions run on Gemini 3 Flash Preview.
+                </p>
+              )}
             </div>
+
+            {/* 3.5 Previous Outputs */}
+            {access && (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold text-slate-800 flex items-center gap-2 text-base">
+                    <Icons.BookOpen size={20} className="text-primary-600" />
+                    Previous Outputs
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => loadHistory(false)}
+                    className="text-xs font-semibold text-primary-600 hover:text-primary-700"
+                    disabled={historyLoading}
+                  >
+                    Refresh
+                  </button>
+                </div>
+                {historyLoading ? (
+                  <p className="text-sm text-slate-500">Loading previous outputs...</p>
+                ) : historyError ? (
+                  <p className="text-sm text-red-600">{historyError}</p>
+                ) : history.length === 0 ? (
+                  <p className="text-sm text-slate-500">No previous outputs yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {history.map((item) => (
+                      <div
+                        key={item.jobId}
+                        className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-lg px-4 py-3"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-slate-900 truncate">
+                            {new Date(item.createdAt).toLocaleString()}
+                          </div>
+                          <div className="text-xs text-slate-500 truncate">
+                            {item.preview || 'No preview available.'}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenHistory(item)}
+                            className="text-xs font-semibold text-primary-600 hover:text-primary-700"
+                          >
+                            Open
+                          </button>
+                          {item.resultUrl && (
+                            <a
+                              href={item.resultUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+                            >
+                              Download
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* 4. User Context */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
@@ -735,7 +904,29 @@ const App: React.FC = () => {
             
             {activeTab === 'transcript' && (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 md:p-8">
-                 <h3 className="text-lg font-bold text-slate-800 mb-4 font-serif">Verbatim Audio Transcript</h3>
+                 <div className="flex items-center justify-between mb-4">
+                   <h3 className="text-lg font-bold text-slate-800 font-serif">Verbatim Audio Transcript</h3>
+                   <button
+                     onClick={handleCopyTranscript}
+                     className={`flex items-center space-x-2 px-3 py-1.5 rounded-lg text-sm font-medium shadow-sm transition-all ${
+                       copiedTranscript
+                         ? 'bg-green-50 text-green-700 border border-green-200'
+                         : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-900'
+                     }`}
+                   >
+                     {copiedTranscript ? (
+                       <>
+                         <Icons.Check size={16} />
+                         <span>Copied</span>
+                       </>
+                     ) : (
+                       <>
+                         <Icons.Copy size={16} />
+                         <span>Copy</span>
+                       </>
+                     )}
+                   </button>
+                 </div>
                  <div className="prose prose-slate max-w-none text-slate-600 whitespace-pre-wrap font-mono text-sm leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
                    {result.transcript}
                  </div>

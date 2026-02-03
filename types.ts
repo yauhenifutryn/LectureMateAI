@@ -42,3 +42,12 @@ export type AccessContext = {
   mode: AccessMode;
   token: string;
 };
+
+export type HistoryItem = {
+  jobId: string;
+  createdAt: string;
+  resultUrl?: string;
+  transcriptUrl?: string;
+  preview?: string;
+  modelId?: string;
+};

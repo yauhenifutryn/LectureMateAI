@@ -131,7 +131,10 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     const jobId = buildJobId();
     const now = new Date().toISOString();
 
-    const resolvedModelId = getModelId(modelId);
+    let resolvedModelId = getModelId(modelId);
+    if (access.mode === 'demo' && resolvedModelId === 'gemini-3-pro-preview') {
+      resolvedModelId = 'gemini-3-flash-preview';
+    }
 
     await setJobRecord({
       id: jobId,
