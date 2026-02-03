@@ -7,13 +7,15 @@ interface ProcessingStateProps {
   uploadCheckpoint?: string | null;
   logMessage?: string | null;
   logTone?: 'info' | 'warning' | 'error';
+  modelLabel?: string | null;
 }
 
 const ProcessingState: React.FC<ProcessingStateProps> = ({
   onCancel,
   uploadCheckpoint,
   logMessage,
-  logTone = 'info'
+  logTone = 'info',
+  modelLabel
 }) => {
   const [progress, setProgress] = useState(0);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -101,6 +103,11 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
 
       {/* Progress Bar Container */}
       <div className="w-full max-w-md space-y-3">
+        {modelLabel && (
+          <p className="text-xs font-medium text-slate-500">
+            Model: <span className="text-slate-700">{modelLabel}</span>
+          </p>
+        )}
         {/* Real-time Status */}
         {logMessage && (
           <div className="min-h-[1.5rem]">

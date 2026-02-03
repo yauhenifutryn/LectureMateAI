@@ -42,6 +42,7 @@ const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('study_guide');
   const [error, setError] = useState<string | null>(null);
   const [processingLog, setProcessingLog] = useState<ProcessingLog | null>(null);
+  const [processingModel, setProcessingModel] = useState<string | null>(null);
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -72,11 +73,6 @@ const App: React.FC = () => {
     if (!inputs) return '';
     const audioLabel = inputs.audio ? 'audio' : 'no audio';
     return `Inputs: ${audioLabel}, slides ${inputs.slidesCount}.`;
-  };
-
-  const formatModelSummary = (model?: string) => {
-    if (!model) return '';
-    return `Model: ${model}.`;
   };
 
   const toLogTone = (code?: string): ProcessingLogTone => {
@@ -186,6 +182,7 @@ const App: React.FC = () => {
       setError(startState.error);
       setUploadCheckpoint(null);
       setProcessingLog(null);
+      setProcessingModel(null);
 
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
@@ -210,9 +207,11 @@ const App: React.FC = () => {
 
           const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
           const inputSummary = formatInputSummary(statusUpdate.inputs);
-          const modelSummary = formatModelSummary(statusUpdate.modelId);
-          const combined = [message, inputSummary, modelSummary].filter(Boolean).join(' ');
+          const combined = [message, inputSummary].filter(Boolean).join(' ');
           setProcessingLog({ message: combined, tone: 'info' });
+          if (statusUpdate.modelId) {
+            setProcessingModel(statusUpdate.modelId);
+          }
         },
         access: access || undefined,
         modelId
@@ -222,6 +221,7 @@ const App: React.FC = () => {
       setPendingBlobUrls([]);
       setUploadCheckpoint(null);
       setProcessingLog(null);
+      setProcessingModel(null);
       setChatMessages([]);
       chatSessionRef.current = null; 
     } catch (err: any) {
@@ -241,6 +241,7 @@ const App: React.FC = () => {
       setStatus(AppStatus.ERROR);
       setUploadCheckpoint(null);
       setProcessingLog(null);
+      setProcessingModel(null);
     }
   };
 
@@ -248,6 +249,7 @@ const App: React.FC = () => {
     if (window.confirm("Stop processing? The current analysis will be lost.")) {
       setStatus(AppStatus.IDLE);
       setProcessingLog(null);
+      setProcessingModel(null);
     }
   };
 
@@ -263,6 +265,7 @@ const App: React.FC = () => {
     setStatus(AppStatus.IDLE);
     setError(null);
     setProcessingLog(null);
+    setProcessingModel(null);
     setChatMessages([]);
     chatSessionRef.current = null;
     setShowResetConfirm(false);
@@ -272,6 +275,7 @@ const App: React.FC = () => {
     void cleanupPendingUploads(access);
     setAccess(null);
     setProcessingLog(null);
+    setProcessingModel(null);
   };
 
   const handleCancelReset = () => setShowResetConfirm(false);
@@ -600,6 +604,7 @@ const App: React.FC = () => {
             uploadCheckpoint={uploadCheckpoint}
             logMessage={processingLog?.message}
             logTone={processingLog?.tone}
+            modelLabel={processingModel}
           />
         )}
 
