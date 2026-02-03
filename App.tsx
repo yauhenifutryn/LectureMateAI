@@ -79,6 +79,11 @@ const App: React.FC = () => {
     return `Inputs: ${audioLabel}, slides ${inputs.slidesCount}.`;
   };
 
+  const formatModelSummary = (model?: string) => {
+    if (!model) return '';
+    return `Model: ${model}.`;
+  };
+
   const toLogTone = (code?: string): ProcessingLogTone => {
     if (!code) return 'info';
     if (['dispatch_failed', 'generation_retry', 'overloaded_retry'].includes(code)) return 'warning';
@@ -195,6 +200,25 @@ const App: React.FC = () => {
     setError(null);
   };
 
+  const clearAudioFile = () => {
+    if (audioFile?.previewUrl) {
+      URL.revokeObjectURL(audioFile.previewUrl);
+    }
+    setAudioFile(null);
+  };
+
+  const handleDownloadRecording = () => {
+    if (!audioFile?.file) return;
+    const url = URL.createObjectURL(audioFile.file);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = audioFile.file.name || 'LectureMate_Recording.webm';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const handleGenerate = async () => {
     if (!audioFile && slideFiles.length === 0) {
       setError("Please provide audio or slide files to analyze.");
@@ -232,7 +256,8 @@ const App: React.FC = () => {
 
           const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
           const inputSummary = formatInputSummary(statusUpdate.inputs);
-          const combined = inputSummary ? `${message} ${inputSummary}` : message;
+          const modelSummary = formatModelSummary(statusUpdate.modelId);
+          const combined = [message, inputSummary, modelSummary].filter(Boolean).join(' ');
           setProcessingLog({ message: combined, tone: 'info' });
         },
         access: access || undefined,
@@ -276,7 +301,7 @@ const App: React.FC = () => {
 
   const handleConfirmReset = () => {
     void cleanupPendingUploads(access);
-    setAudioFile(null);
+    clearAudioFile();
     setSlideFiles([]);
     setResult(null);
     setUserContext('');
@@ -458,7 +483,17 @@ const App: React.FC = () => {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <button onClick={() => setAudioFile(null)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                          {audioFile.id === 'recording' && (
+                            <button
+                              type="button"
+                              onClick={handleDownloadRecording}
+                              className="p-2 text-slate-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                              aria-label="Download recording"
+                            >
+                              <Icons.Download size={18} />
+                            </button>
+                          )}
+                          <button onClick={clearAudioFile} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                             <Icons.X size={18} />
                           </button>
                         </div>

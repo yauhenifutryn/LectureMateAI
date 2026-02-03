@@ -12,6 +12,7 @@ import {
 } from '../_lib/jobStore.js';
 import { validateObjectName } from '../_lib/gcs.js';
 import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
+import { getModelId } from '../_lib/gemini.js';
 
 export const config = { maxDuration: 60 };
 
@@ -33,7 +34,6 @@ type ProcessBody = {
 };
 
 const PROCESSING_STALE_MS = 0;
-const ALLOWED_MODELS = new Set(['gemini-3-flash-preview', 'gemini-3-pro-preview']);
 
 const buildInputSummary = (audio?: FilePayload, slides: FilePayload[] = []) => ({
   audio: Boolean(audio),
@@ -130,6 +130,8 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     const jobId = buildJobId();
     const now = new Date().toISOString();
 
+    const resolvedModelId = getModelId(modelId);
+
     await setJobRecord({
       id: jobId,
       status: 'queued',
@@ -138,7 +140,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
         audio: audio?.objectName && audio?.mimeType ? audio : undefined,
         slides,
         userContext,
-        modelId: modelId && ALLOWED_MODELS.has(modelId) ? modelId : undefined
+        modelId: resolvedModelId
       },
       access: {
         mode: access.mode,
@@ -221,6 +223,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         resultUrl: job.resultUrl,
         preview: job.preview,
         error: job.error,
+        modelId: job.request.modelId,
         inputs: buildInputSummary(job.request.audio, job.request.slides)
       });
     }
@@ -234,6 +237,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         resultUrl: job.resultUrl,
         preview: job.preview,
         error: job.error,
+        modelId: job.request.modelId,
         inputs: buildInputSummary(job.request.audio, job.request.slides)
       });
     }
@@ -252,6 +256,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       status: updated.status,
       stage: updated.stage,
       progress: updated.progress,
+      modelId: job.request.modelId,
       inputs: buildInputSummary(job.request.audio, job.request.slides)
     });
   } catch (error) {
@@ -310,7 +315,8 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
             progress: failed.progress,
             resultUrl: failed.resultUrl,
             preview: failed.preview,
-            error: failed.error
+            error: failed.error,
+            modelId: job.request.modelId
           });
         }
       }
@@ -324,6 +330,7 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
       resultUrl: job.resultUrl,
       preview: job.preview,
       error: job.error,
+      modelId: job.request.modelId,
       inputs: buildInputSummary(job.request.audio, job.request.slides)
     });
   } catch (error) {

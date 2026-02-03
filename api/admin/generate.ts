@@ -1,9 +1,16 @@
 import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { AccessError, generateDemoCode, requireAdmin, storeDemoCode } from '../_lib/access.js';
+import {
+  AccessError,
+  generateDemoCode,
+  normalizeDemoCode,
+  requireAdmin,
+  storeDemoCode
+} from '../_lib/access.js';
 
 type GenerateBody = {
   uses?: number;
+  code?: string;
 };
 
 function parseBody(req: VercelRequest): GenerateBody {
@@ -21,12 +28,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     requireAdmin(req);
-    const { uses } = parseBody(req);
+    const { uses, code } = parseBody(req);
     const finalUses = Number.isFinite(uses) && uses && uses > 0 ? Math.floor(uses) : 3;
-    const code = generateDemoCode();
-    await storeDemoCode(code, finalUses);
+    let normalizedCode = code ? normalizeDemoCode(code) : '';
+    if (normalizedCode) {
+      if (!/^[A-Z0-9-]{3,32}$/.test(normalizedCode)) {
+        return res.status(400).json({
+          error: {
+            code: 'invalid_code_format',
+            message: 'Custom code must be 3-32 characters using A-Z, 0-9, or hyphen.'
+          }
+        });
+      }
+    } else {
+      normalizedCode = generateDemoCode();
+    }
 
-    return res.status(200).json({ code, uses: finalUses });
+    await storeDemoCode(normalizedCode, finalUses);
+
+    return res.status(200).json({ code: normalizedCode, uses: finalUses });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });

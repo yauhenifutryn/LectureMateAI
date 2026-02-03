@@ -19,6 +19,7 @@ type JobStatusResponse = {
   progress?: number;
   resultUrl?: string;
   preview?: string;
+  modelId?: string;
   inputs?: {
     audio: boolean;
     slidesCount: number;
@@ -376,6 +377,10 @@ export function parseResponseText(text: string): {
     .replace(/^```/, '')
     .replace(/```$/, '')
     .trim();
+
+  if (!transcript || transcript.trim().length === 0) {
+    transcript = '(No transcript provided.)';
+  }
 
   return { studyGuide, transcript, slides, rawNotes };
 }

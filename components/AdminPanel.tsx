@@ -24,6 +24,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
   const [codes, setCodes] = useState<DemoCode[]>([]);
   const [events, setEvents] = useState<AccessEvent[]>([]);
   const [uses, setUses] = useState('3');
+  const [customCode, setCustomCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isEventsLoading, setIsEventsLoading] = useState(false);
   const [isStatsLoading, setIsStatsLoading] = useState(false);
@@ -177,7 +178,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
           Authorization: `Bearer ${adminToken}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ uses: Number.isFinite(parsedUses) ? parsedUses : 3 })
+        body: JSON.stringify({
+          uses: Number.isFinite(parsedUses) ? parsedUses : 3,
+          code: customCode.trim() ? customCode.trim() : undefined
+        })
       });
       const data = await response.json();
       if (response.status === 401) {
@@ -188,6 +192,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
         throw new Error(data?.error?.message || 'Unable to generate code.');
       }
       setLastGenerated(data.code);
+      setCustomCode('');
       await loadCodes();
       await loadEvents();
     } catch (err) {
@@ -267,7 +272,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
         </header>
 
         <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+          <div className="flex flex-col lg:flex-row lg:items-end gap-4">
             <div className="flex-1">
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                 Uses Per Demo Code
@@ -275,6 +280,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
               <input
                 value={uses}
                 onChange={(event) => setUses(event.target.value)}
+                className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex-1">
+              <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                Custom Code (Optional)
+              </label>
+              <input
+                value={customCode}
+                onChange={(event) => setCustomCode(event.target.value)}
+                placeholder="EXAMPLE-2026"
                 className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm"
               />
             </div>
