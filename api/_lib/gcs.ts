@@ -87,11 +87,12 @@ export const listObjects = async (
     pageToken,
     autoPaginate: false
   });
+  const apiResponse = response as { nextPageToken?: string } | undefined;
   const mapped = files.map((file) => ({
     name: file.name,
     size: Number(file.metadata.size ?? 0)
   }));
-  return { files: mapped, nextPageToken: response?.nextPageToken };
+  return { files: mapped, nextPageToken: apiResponse?.nextPageToken };
 };
 
 export const validateObjectName = (objectName: string): void => {

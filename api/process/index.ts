@@ -61,7 +61,7 @@ function getProcessingStaleMs(): number {
 
 async function dispatchToWorker(
   jobId: string
-): Promise<{ ok: boolean; status: number; error?: { code?: string; message?: string } }> {
+): Promise<{ ok: boolean; status: number; error?: { code?: string; message: string } }> {
   const workerUrl = process.env.WORKER_URL;
   const workerSecret = process.env.WORKER_SHARED_SECRET;
   if (!workerUrl || !workerSecret) {
@@ -89,13 +89,18 @@ async function dispatchToWorker(
       payload = null;
     }
     if (!response.ok) {
+      const payloadError = payload?.error;
+      const normalizedError =
+        payloadError?.message !== undefined
+          ? { code: payloadError.code, message: payloadError.message }
+          : {
+              code: payloadError?.code ?? 'dispatch_failed',
+              message: `Worker dispatch failed (${response.status}).`
+            };
       return {
         ok: false,
         status: response.status,
-        error: payload?.error ?? {
-          code: 'dispatch_failed',
-          message: `Worker dispatch failed (${response.status}).`
-        }
+        error: normalizedError
       };
     }
     return { ok: true, status: response.status };
