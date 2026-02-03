@@ -18,16 +18,11 @@ import { shouldEnablePlaybackWaveform } from './utils/playbackWaveform';
 import { isMobileUserAgent } from './utils/device';
 import { getAnalysisStartState } from './utils/analysisState';
 import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
-import { restoreAccessFromStorage, restoreBackupFromStorage } from './utils/accessStorage';
-import { safeRemoveItem, safeSetItem } from './utils/storage';
 
 type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 type ProcessingLogTone = 'info' | 'warning' | 'error';
 type ProcessingLog = { message: string; tone: ProcessingLogTone };
-
-const LOCAL_STORAGE_KEY = 'lecturemate_backup_v1';
-const ACCESS_STORAGE_KEY = 'lecturemate_access_v1';
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   
@@ -116,47 +111,6 @@ const App: React.FC = () => {
     window.addEventListener('beforeunload', handleBeforeUnload);
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [status, audioFile, result]);
-
-  // 2. Backup: Restore Study Guide from LocalStorage on mount
-  useEffect(() => {
-    const parsed = restoreBackupFromStorage(localStorage, LOCAL_STORAGE_KEY);
-    if (parsed?.result && (parsed.result as AnalysisResult).studyGuide) {
-      console.log("Restoring session from backup");
-      setResult(parsed.result as AnalysisResult);
-      setStatus(AppStatus.COMPLETED);
-    }
-  }, []);
-
-  // 2b. Access: Restore access token from LocalStorage on mount
-  useEffect(() => {
-    const restored = restoreAccessFromStorage(localStorage, ACCESS_STORAGE_KEY);
-    if (restored) {
-      setAccess(restored);
-    }
-  }, []);
-
-  // 3. Backup: Save Study Guide to LocalStorage
-  useEffect(() => {
-    if (result) {
-      try {
-        safeSetItem(localStorage, LOCAL_STORAGE_KEY, JSON.stringify({
-          result,
-          timestamp: Date.now()
-        }));
-      } catch (e) {
-        console.error("Failed to save backup", e);
-      }
-    }
-  }, [result]);
-
-  // 3b. Access: Persist access token
-  useEffect(() => {
-    if (access) {
-      safeSetItem(localStorage, ACCESS_STORAGE_KEY, JSON.stringify(access));
-    } else {
-      safeRemoveItem(localStorage, ACCESS_STORAGE_KEY);
-    }
-  }, [access]);
 
   // 4. Initialize Chat Session
   useEffect(() => {
@@ -311,7 +265,6 @@ const App: React.FC = () => {
     setProcessingLog(null);
     setChatMessages([]);
     chatSessionRef.current = null;
-    safeRemoveItem(localStorage, LOCAL_STORAGE_KEY);
     setShowResetConfirm(false);
   };
 
