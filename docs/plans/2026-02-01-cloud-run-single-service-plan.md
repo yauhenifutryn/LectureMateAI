@@ -203,7 +203,6 @@ import { promises as fs } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { buildVercelRequest, createVercelResponse } from './adapter';
 import processHandler from '../api/process';
-import uploadHandler from '../api/upload';
 import chatHandler from '../api/chat';
 import demoValidateHandler from '../api/demo/validate';
 import blobDeleteHandler from '../api/blob/delete';
@@ -224,7 +223,6 @@ export function resolveStaticPath(urlPath: string) {
 
 const apiRoutes: Record<string, typeof processHandler> = {
   '/api/process': processHandler,
-  '/api/upload': uploadHandler,
   '/api/chat': chatHandler,
   '/api/demo/validate': demoValidateHandler,
   '/api/blob/delete': blobDeleteHandler,

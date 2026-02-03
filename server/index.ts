@@ -38,7 +38,6 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
   const [
     processHandler,
     gcsUploadUrlHandler,
-    uploadHandler,
     chatHandler,
     demoValidateHandler,
     blobDeleteHandler,
@@ -52,7 +51,6 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
   ] = await Promise.all([
     import('../api/process/index.js'),
     import('../api/gcs/upload-url.js'),
-    import('../api/upload.js'),
     import('../api/chat.js'),
     import('../api/demo/validate.js'),
     import('../api/blob/delete.js'),
@@ -68,7 +66,6 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
   cachedRoutes = {
     '/api/process': processHandler.default,
     '/api/gcs/upload-url': gcsUploadUrlHandler.default,
-    '/api/upload': uploadHandler.default,
     '/api/chat': chatHandler.default,
     '/api/demo/validate': demoValidateHandler.default,
     '/api/blob/delete': blobDeleteHandler.default,
