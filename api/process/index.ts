@@ -167,6 +167,11 @@ function dispatchInBackground(jobId: string) {
   void dispatchToWorker(jobId)
     .then(async (dispatch) => {
       if (dispatch.ok) return;
+      console.warn('Worker dispatch failed:', {
+        jobId,
+        status: dispatch.status,
+        error: dispatch.error
+      });
       const retryError = dispatch.error ?? {
         code: 'dispatch_failed',
         message: 'Worker dispatch failed. Try again shortly.'
@@ -179,7 +184,7 @@ function dispatchInBackground(jobId: string) {
       });
     })
     .catch(async (error) => {
-      console.error('Worker dispatch failed:', error);
+      console.error('Worker dispatch failed:', { jobId, error });
       const retryError = {
         code: 'dispatch_failed',
         message: 'Worker dispatch failed. Try again shortly.'
