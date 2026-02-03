@@ -37,6 +37,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
   const adminToken = access?.mode === 'admin' ? access.token : null;
 
   const formatMegabytes = (bytes: number) => (bytes / (1024 * 1024)).toFixed(2);
+  const activeCodes = codes.filter((code) => code.remaining > 0);
+  const expiredCodes = codes.filter((code) => code.remaining <= 0);
 
   const loadCodes = async () => {
     if (!adminToken) return;
@@ -44,6 +46,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     setError(null);
     try {
       const response = await fetch('/api/admin/list', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${adminToken}` }
       });
       const data = await response.json();
@@ -69,6 +72,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     setError(null);
     try {
       const response = await fetch('/api/admin/events?limit=50', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${adminToken}` }
       });
       const data = await response.json();
@@ -94,6 +98,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     setError(null);
     try {
       const response = await fetch('/api/admin/stats', {
+        cache: 'no-store',
         headers: { Authorization: `Bearer ${adminToken}` }
       });
       const data = await response.json();
@@ -162,6 +167,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
     const interval = setInterval(() => {
       loadEvents();
     }, 15000);
+    return () => clearInterval(interval);
+  }, [adminToken]);
+
+  useEffect(() => {
+    if (!adminToken) return;
+    const interval = setInterval(() => {
+      loadCodes();
+    }, 20000);
     return () => clearInterval(interval);
   }, [adminToken]);
 
@@ -368,13 +381,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
             </button>
           </div>
 
-          {isLoading && codes.length === 0 ? (
+          {isLoading && activeCodes.length === 0 ? (
             <p className="text-sm text-slate-500">Loading codes...</p>
-          ) : codes.length === 0 ? (
+          ) : activeCodes.length === 0 ? (
             <p className="text-sm text-slate-500">No demo codes created yet.</p>
           ) : (
             <div className="space-y-3">
-              {codes.map((code) => (
+              {activeCodes.map((code) => (
                 <div
                   key={code.code}
                   className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-lg px-4 py-3"
@@ -391,6 +404,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ access, onAccessChange }) => {
                     className="text-xs font-semibold text-red-600 hover:text-red-700"
                   >
                     Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-slate-900">Expired Demo Codes</h2>
+            <button
+              type="button"
+              onClick={loadCodes}
+              className="text-sm font-semibold text-primary-600 hover:text-primary-700"
+            >
+              Refresh
+            </button>
+          </div>
+
+          {isLoading && expiredCodes.length === 0 ? (
+            <p className="text-sm text-slate-500">Loading expired codes...</p>
+          ) : expiredCodes.length === 0 ? (
+            <p className="text-sm text-slate-500">No expired codes yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {expiredCodes.map((code) => (
+                <div
+                  key={code.code}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-slate-200 rounded-lg px-4 py-3"
+                >
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">{code.code}</div>
+                    <div className="text-xs text-slate-500">Expired</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleRevoke(code.code)}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700"
+                  >
+                    Delete
                   </button>
                 </div>
               ))}
