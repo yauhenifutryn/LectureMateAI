@@ -25,6 +25,15 @@ const AccessGate: React.FC<AccessGateProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
+  const persistAccessForRedirect = (next: AccessContext) => {
+    try {
+      if (typeof window === 'undefined') return;
+      window.sessionStorage.setItem('lecturemate_access_redirect', JSON.stringify(next));
+    } catch {
+      // best effort
+    }
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
     const trimmed = value.trim();
@@ -57,9 +66,11 @@ const AccessGate: React.FC<AccessGateProps> = ({
 
       onAuthorize({ mode: resolvedMode, token: trimmed });
       if (resolvedMode === 'admin' && mode === 'admin' && redirectAdminTo && typeof window !== 'undefined') {
+        persistAccessForRedirect({ mode: resolvedMode, token: trimmed });
         window.location.assign(redirectAdminTo);
       }
       if (resolvedMode === 'demo' && mode === 'demo' && redirectDemoTo && typeof window !== 'undefined') {
+        persistAccessForRedirect({ mode: resolvedMode, token: trimmed });
         window.location.assign(redirectDemoTo);
       }
     } catch (err) {

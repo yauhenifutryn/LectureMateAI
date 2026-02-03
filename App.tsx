@@ -56,6 +56,21 @@ const App: React.FC = () => {
     typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
   const audioRequired = slideFiles.length === 0;
 
+  useEffect(() => {
+    if (access || typeof window === 'undefined') return;
+    try {
+      const stored = window.sessionStorage.getItem('lecturemate_access_redirect');
+      if (!stored) return;
+      const parsed = JSON.parse(stored) as AccessContext;
+      if (parsed?.mode && parsed?.token) {
+        setAccess(parsed);
+      }
+      window.sessionStorage.removeItem('lecturemate_access_redirect');
+    } catch {
+      // ignore
+    }
+  }, [access]);
+
   const formatStageMessage = (stage?: string, status?: string) => {
     const normalized = stage || status || '';
     const mapping: Record<string, string> = {
