@@ -7,6 +7,7 @@ import {
   requireAdmin,
   storeDemoCode
 } from '../_lib/access.js';
+import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 type GenerateBody = {
   uses?: number;
@@ -27,6 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await enforceRateLimit(req, 'admin-generate', getRateLimit('RATE_LIMIT_ADMIN', 60));
     requireAdmin(req);
     const { uses, code } = parseBody(req);
     const finalUses = Number.isFinite(uses) && uses && uses > 0 ? Math.floor(uses) : 3;
@@ -48,6 +50,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ code: normalizedCode, uses: finalUses });
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });
     }

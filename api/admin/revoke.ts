@@ -1,6 +1,7 @@
 import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, requireAdmin, revokeDemoCode } from '../_lib/access.js';
+import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 type RevokeBody = {
   code?: string;
@@ -20,6 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await enforceRateLimit(req, 'admin-revoke', getRateLimit('RATE_LIMIT_ADMIN', 60));
     requireAdmin(req);
     const { code } = parseBody(req);
     if (!code) {
@@ -29,6 +31,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await revokeDemoCode(code);
     return res.status(200).json({ ok: true });
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });
     }

@@ -13,6 +13,7 @@ import {
 import { validateObjectName } from '../_lib/gcs.js';
 import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
 import { getModelId } from '../_lib/gemini.js';
+import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 export const config = { maxDuration: 60 };
 
@@ -221,6 +222,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         stage: job.stage,
         progress: job.progress,
         resultUrl: job.resultUrl,
+        transcriptUrl: job.transcriptUrl,
         preview: job.preview,
         error: job.error,
         modelId: job.request.modelId,
@@ -235,6 +237,7 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
         stage: job.stage,
         progress: job.progress,
         resultUrl: job.resultUrl,
+        transcriptUrl: job.transcriptUrl,
         preview: job.preview,
         error: job.error,
         modelId: job.request.modelId,
@@ -312,11 +315,12 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
             jobId,
             status: failed.status,
             stage: failed.stage,
-            progress: failed.progress,
-            resultUrl: failed.resultUrl,
-            preview: failed.preview,
-            error: failed.error,
-            modelId: job.request.modelId
+        progress: failed.progress,
+        resultUrl: failed.resultUrl,
+        transcriptUrl: failed.transcriptUrl,
+        preview: failed.preview,
+        error: failed.error,
+        modelId: job.request.modelId
           });
         }
       }
@@ -328,6 +332,7 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
       stage: job.stage,
       progress: job.progress,
       resultUrl: job.resultUrl,
+      transcriptUrl: job.transcriptUrl,
       preview: job.preview,
       error: job.error,
       modelId: job.request.modelId,
@@ -352,6 +357,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res
       .status(405)
       .json({ error: { code: 'method_not_allowed', message: 'POST required.' } });
+  }
+
+  try {
+    await enforceRateLimit(req, 'process', getRateLimit('RATE_LIMIT_PROCESS', 10));
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
+    return res
+      .status(500)
+      .json({ error: { code: 'internal_error', message: 'Rate limit check failed.' } });
   }
 
   const body = parseBody(req);

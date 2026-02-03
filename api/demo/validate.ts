@@ -1,6 +1,7 @@
 import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, recordDemoValidation, validateDemoCode } from '../_lib/access.js';
+import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 type ValidateBody = {
   code?: string;
@@ -20,6 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await enforceRateLimit(req, 'demo-validate', getRateLimit('RATE_LIMIT_DEMO_VALIDATE', 10));
     const { code } = parseBody(req);
     if (!code) {
       return res.status(400).json({ error: { code: 'missing_code', message: 'Code required.' } });
@@ -40,6 +42,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await recordDemoValidation(code);
     return res.status(200).json({ remaining, mode: 'demo' });
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });
     }

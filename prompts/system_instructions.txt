@@ -65,18 +65,10 @@ You may add small standard finance background ONLY to make the lecture understan
 	•	Keep it short.
 	•	Do not mix general context into lecture claims.
 
-SOURCE_APPENDIX_MODE (ALWAYS REQUIRED FOR THIS APP)
+OUTPUT MODE (THIS APP)
 
-After the study guide, ALWAYS append the exact separators and verbatim sources in this order:
-===TRANSCRIPT===
-===SLIDES===
-===RAW_NOTES===
-
-Verbatim means identical characters, no cleaning, no correcting.
-If a source is not provided, write exactly:
-	•	(No transcript provided.)
-	•	(No slides provided.)
-	•	(No raw notes provided.)
+Output ONLY the study guide.
+Do NOT append transcript, slides, or raw notes dumps.
 
 STUDY GUIDE STRUCTURE (SMOOTH, NOT A SKELETON)
 

@@ -5,13 +5,15 @@ import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
+  generateTranscriptFromUploaded,
   cleanupGeminiFiles,
   getModelId
 } from '../api/_lib/gemini.js';
 import { cleanupBlobUrls } from '../api/_lib/blobCleanup.js';
 import { toPublicError } from '../api/_lib/errors.js';
-import { storeResultMarkdown } from '../api/_lib/resultStorage.js';
+import { storeResultMarkdown, storeTranscriptText } from '../api/_lib/resultStorage.js';
 import { getJobRecord, updateJobRecord } from '../api/_lib/jobStore.js';
+import { getMaxUploadBytes, getObjectSizeBytes } from '../api/_lib/gcs.js';
 
 type WorkerResult = {
   jobId: string;
@@ -39,23 +41,6 @@ const getPollTimeoutMs = (): number => {
 const buildPreview = (text: string, maxChars = 2000): string => {
   if (!text) return '';
   return text.slice(0, maxChars).trim();
-};
-
-const TRANSCRIPT_SEPARATOR = '===TRANSCRIPT===';
-const SLIDES_SEPARATOR = '===SLIDES===';
-const RAW_NOTES_SEPARATOR = '===RAW_NOTES===';
-
-const extractTranscript = (text: string): string | null => {
-  const transIdx = text.indexOf(TRANSCRIPT_SEPARATOR);
-  if (transIdx === -1) return null;
-  const after = transIdx + TRANSCRIPT_SEPARATOR.length;
-  const slidesIdx = text.indexOf(SLIDES_SEPARATOR);
-  const rawIdx = text.indexOf(RAW_NOTES_SEPARATOR);
-  const endCandidates = [slidesIdx, rawIdx].filter((idx) => idx !== -1 && idx > after);
-  const end = endCandidates.length ? Math.min(...endCandidates) : text.length;
-  const transcript = text.substring(after, end).trim();
-  if (!transcript) return null;
-  return transcript;
 };
 
 export async function runJob(jobId: string): Promise<WorkerResult> {
@@ -91,6 +76,20 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
   let uploaded = job.uploaded ?? [];
 
   try {
+    const maxBytes = getMaxUploadBytes();
+    if (job.request.audio?.objectName) {
+      const size = await getObjectSizeBytes(job.request.audio.objectName);
+      if (size > maxBytes) {
+        throw new Error('File too large.');
+      }
+    }
+    for (const slide of job.request.slides) {
+      const size = await getObjectSizeBytes(slide.objectName);
+      if (size > maxBytes) {
+        throw new Error('File too large.');
+      }
+    }
+
     if (uploaded.length === 0) {
       await updateJobRecord(jobId, {
         status: 'processing',
@@ -165,6 +164,21 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
 
     console.info('Worker model:', getModelId(job.request.modelId));
 
+    let transcriptText: string | null = null;
+    if (job.request.audio) {
+      transcriptText = await generateTranscriptFromUploaded(
+        apiKey,
+        {
+          audio: job.request.audio,
+          modelId: job.request.modelId
+        },
+        uploaded
+      );
+      if (!transcriptText || transcriptText.trim().length === 0) {
+        throw new Error('Transcript missing in output.');
+      }
+    }
+
     const resultText = await generateStudyGuideFromUploaded(
       apiKey,
       {
@@ -176,17 +190,17 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       uploaded
     );
 
-    if (!extractTranscript(resultText)) {
-      throw new Error('Transcript missing in output.');
-    }
-
     const resultUrl = await storeResultMarkdown(resultText, jobId);
+    const transcriptUrl = transcriptText
+      ? await storeTranscriptText(transcriptText, jobId)
+      : null;
 
     const completed = await updateJobRecord(jobId, {
       status: 'completed',
       stage: 'generating',
       progress: 100,
       resultUrl: resultUrl || undefined,
+      transcriptUrl: transcriptUrl || undefined,
       preview: buildPreview(resultText),
       error: undefined
     });

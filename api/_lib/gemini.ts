@@ -368,6 +368,14 @@ const buildPromptText = (input: StudyInput): string =>
     hasRawNotes: false
   });
 
+const buildTranscriptPromptText = (): string =>
+  [
+    'Transcribe the lecture audio verbatim.',
+    'Return only the raw transcript text.',
+    'Do not add headers, labels, or markdown.',
+    'If words are unclear, use [inaudible].'
+  ].join(' ');
+
 const buildInlinePartsForSlides = async (
   ai: GoogleGenAI,
   slides: FilePayload[]
@@ -471,6 +479,20 @@ export async function generateStudyGuideFromUploaded(
     });
   });
 
+  if (input.audio) {
+    const hasUploadedAudio = uploaded.some((file) => file.displayName === 'Lecture Audio');
+    if (!hasUploadedAudio) {
+      const inlineAudio = await processFilePayload(ai, input.audio, 'Lecture Audio', 'audio', {
+        inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+        alwaysUploadAudio: true,
+        allowUpload: false
+      });
+      if (inlineAudio.part?.inlineData) {
+        parts.unshift(inlineAudio.part);
+      }
+    }
+  }
+
   if (input.slides?.length) {
     const inlineParts = await buildInlinePartsForSlides(ai, input.slides);
     parts.push(...inlineParts);
@@ -494,6 +516,68 @@ export async function generateStudyGuideFromUploaded(
       throw new Error('Received empty response from Gemini.');
     }
     return fullText;
+  } catch (error) {
+    if (isOverloadError(error)) {
+      throw new OverloadRetryError();
+    }
+    if (isTimeoutError(error)) {
+      throw new GenerationRetryError();
+    }
+    throw error;
+  }
+}
+
+export async function generateTranscriptFromUploaded(
+  apiKey: string,
+  input: Pick<StudyInput, 'audio' | 'modelId'>,
+  uploaded: UploadedFileRef[]
+): Promise<string | null> {
+  if (!input.audio) return null;
+  const ai = new GoogleGenAI({ apiKey });
+  const parts: GeminiPart[] = [];
+
+  const uploadedAudio = uploaded.find((file) => file.displayName === 'Lecture Audio');
+  if (uploadedAudio) {
+    parts.push({
+      fileData: {
+        mimeType: uploadedAudio.mimeType,
+        fileUri: uploadedAudio.fileUri
+      }
+    });
+  } else {
+    const inlineAudio = await processFilePayload(ai, input.audio, 'Lecture Audio', 'audio', {
+      inlineThresholdBytes: INLINE_THRESHOLD_BYTES,
+      alwaysUploadAudio: true,
+      allowUpload: false
+    });
+    if (inlineAudio.part) {
+      parts.push(inlineAudio.part);
+    }
+  }
+
+  if (parts.length === 0) {
+    return null;
+  }
+
+  parts.push({ text: buildTranscriptPromptText() });
+
+  const model = getModelId(input.modelId);
+
+  try {
+    const responseStream = await withOverloadRetry(() =>
+      ai.models.generateContentStream({
+        model,
+        contents: { parts },
+        config: {
+          temperature: 0
+        }
+      })
+    );
+    const fullText = await collectStreamText(responseStream);
+    if (!fullText) {
+      throw new Error('Received empty transcript response.');
+    }
+    return fullText.trim();
   } catch (error) {
     if (isOverloadError(error)) {
       throw new OverloadRetryError();

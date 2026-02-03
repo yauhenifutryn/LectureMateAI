@@ -23,6 +23,24 @@ const knownContentTypes: Record<string, string> = {
   '.woff2': 'font/woff2'
 };
 
+const securityHeaders: Record<string, string> = {
+  'X-Content-Type-Options': 'nosniff',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'X-Frame-Options': 'DENY',
+  'Content-Security-Policy': [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob: https://storage.googleapis.com",
+    "font-src 'self' data:",
+    "connect-src 'self' https://storage.googleapis.com",
+    "media-src 'self' blob: data: https://storage.googleapis.com",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'"
+  ].join('; ')
+};
+
 export function resolveStaticPath(urlPath: string) {
   if (urlPath === '/' || urlPath === '') return path.join(distDir, 'index.html');
   return path.join(distDir, urlPath.replace(/^\//, ''));
@@ -114,6 +132,7 @@ async function handleApi(req: http.IncomingMessage, res: http.ServerResponse) {
 
   res.writeHead(vercelResponse.statusCode, {
     'Content-Type': 'application/json',
+    ...securityHeaders,
     ...headers
   });
   res.end(JSON.stringify(vercelResponse.body ?? {}));
@@ -130,14 +149,17 @@ async function handleStatic(req: http.IncomingMessage, res: http.ServerResponse)
     if (stat.isFile()) {
       const data = await fs.readFile(filePath);
       const contentType = knownContentTypes[ext];
-      res.writeHead(200, contentType ? { 'Content-Type': contentType } : undefined);
+      res.writeHead(200, {
+        ...securityHeaders,
+        ...(contentType ? { 'Content-Type': contentType } : undefined)
+      });
       res.end(data);
       return;
     }
   } catch (error) {
     if (expectsFile) {
       console.warn('Static file not found.', { urlPath, filePath, distDir, cwd: process.cwd() });
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.writeHead(404, { 'Content-Type': 'text/plain', ...securityHeaders });
       res.end('Not found');
       return;
     }
@@ -145,7 +167,7 @@ async function handleStatic(req: http.IncomingMessage, res: http.ServerResponse)
 
   const indexPath = path.join(distDir, 'index.html');
   const index = await fs.readFile(indexPath);
-  res.writeHead(200, { 'Content-Type': 'text/html' });
+  res.writeHead(200, { 'Content-Type': 'text/html', ...securityHeaders });
   res.end(index);
 }
 

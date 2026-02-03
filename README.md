@@ -11,13 +11,16 @@
    GCS_BUCKET=your_gcs_bucket_name
    GCS_UPLOAD_URL_TTL_SECONDS=900
    GCS_RESULT_URL_TTL_SECONDS=604800
+   MAX_UPLOAD_BYTES=536870912
    SYSTEM_INSTRUCTIONS=your_master_tutor_prompt
    ADMIN_PASSWORD=your_admin_password
    ```
    `GCS_UPLOAD_URL_TTL_SECONDS` and `GCS_RESULT_URL_TTL_SECONDS` are optional.
+   `MAX_UPLOAD_BYTES` is optional, defaults to 512 MB.
    `SYSTEM_INSTRUCTIONS` and `ADMIN_PASSWORD` must be set for production.
    Recommended prompt template: `prompts/system_instructions.txt`.
    For KV, set `KV_REST_API_URL`, `KV_REST_API_TOKEN`, and `KV_REST_API_READ_ONLY_TOKEN` (Upstash or Vercel KV).
+   Optional rate-limit env vars (per minute): `RATE_LIMIT_WINDOW_SECONDS`, `RATE_LIMIT_DEMO_VALIDATE`, `RATE_LIMIT_ADMIN_VERIFY`, `RATE_LIMIT_ADMIN`, `RATE_LIMIT_PROCESS`, `RATE_LIMIT_CHAT`, `RATE_LIMIT_UPLOAD`.
 3. Run the app:
    `npm run dev`
 

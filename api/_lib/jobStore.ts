@@ -39,6 +39,7 @@ export type JobRecord = {
   progress?: number;
   uploaded?: UploadedFileRef[];
   resultUrl?: string;
+  transcriptUrl?: string;
   preview?: string;
   error?: { code?: string; message: string };
 };

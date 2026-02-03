@@ -18,6 +18,7 @@ type JobStatusResponse = {
   stage?: string;
   progress?: number;
   resultUrl?: string;
+  transcriptUrl?: string;
   preview?: string;
   modelId?: string;
   inputs?: {
@@ -95,10 +96,17 @@ const requestUploadUrl = async (
   context: UploadContext
 ): Promise<{ uploadUrl: string; objectName: string }> => {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const body: { filename: string; mimeType: string; jobId: string; demoCode?: string } = {
+  const body: {
+    filename: string;
+    mimeType: string;
+    jobId: string;
+    sizeBytes: number;
+    demoCode?: string;
+  } = {
     filename: sanitizeFileName(file.name || 'upload'),
     mimeType: getMimeType(file),
-    jobId: context.jobId
+    jobId: context.jobId,
+    sizeBytes: file.size
   };
 
   if (context.access?.mode === 'admin') {
@@ -116,6 +124,7 @@ const requestUploadUrl = async (
   const { json: data, text } = await parseResponse<{
     uploadUrl?: string;
     objectName?: string;
+    maxBytes?: number;
     error?: { message?: string };
   }>(response);
   if (!response.ok || !data?.uploadUrl || !data?.objectName) {
@@ -277,6 +286,14 @@ const fetchResultText = async (resultUrl: string): Promise<string> => {
   return response.text();
 };
 
+const fetchTranscriptText = async (transcriptUrl: string): Promise<string> => {
+  const response = await fetch(transcriptUrl, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error('Failed to fetch transcript.');
+  }
+  return response.text();
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const TRANSIENT_ERROR_CODES = new Set(['dispatch_failed', 'overloaded_retry', 'generation_retry']);
@@ -327,7 +344,7 @@ const pollJobStatus = async (
 /**
  * Parses the raw plain text response using the strict separators.
  */
-export function parseResponseText(text: string): {
+export function parseResponseText(text: string, transcriptOverride?: string): {
   studyGuide: string;
   transcript: string;
   slides?: string;
@@ -366,10 +383,10 @@ export function parseResponseText(text: string): {
     }
   } else if (guideIdx !== -1) {
     studyGuide = text.substring(guideIdx + GUIDE_SEP.length).trim();
-    transcript = 'Transcript generation was interrupted or missing.';
+    transcript = '';
   } else {
     studyGuide = text;
-    transcript = 'Could not parse output structure.';
+    transcript = '';
   }
 
   studyGuide = studyGuide
@@ -378,9 +395,10 @@ export function parseResponseText(text: string): {
     .replace(/```$/, '')
     .trim();
 
-  if (!transcript || transcript.trim().length === 0) {
-    transcript = '(No transcript provided.)';
-  }
+  const normalizedTranscript = transcriptOverride ?? transcript;
+  transcript = normalizedTranscript && normalizedTranscript.trim().length > 0
+    ? normalizedTranscript
+    : '(No transcript provided.)';
 
   return { studyGuide, transcript, slides, rawNotes };
 }
@@ -459,7 +477,15 @@ export const createAnalyzeAudioLecture =
     }
 
     const resultText = await fetchResult(status.resultUrl);
-    return parseResponseText(resultText);
+    let transcriptText: string | undefined;
+    if (status.transcriptUrl) {
+      try {
+        transcriptText = await fetchTranscriptText(status.transcriptUrl);
+      } catch (error) {
+        console.error('Failed to fetch transcript:', error);
+      }
+    }
+    return parseResponseText(resultText, transcriptText);
   };
 
 export const analyzeAudioLecture = createAnalyzeAudioLecture({

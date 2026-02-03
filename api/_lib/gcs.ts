@@ -6,6 +6,14 @@ export const parseBucketEnv = (): string => {
   return bucket;
 };
 
+export const DEFAULT_MAX_UPLOAD_BYTES = 512 * 1024 * 1024;
+
+export const getMaxUploadBytes = (): number => {
+  const raw = Number(process.env.MAX_UPLOAD_BYTES ?? DEFAULT_MAX_UPLOAD_BYTES);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_MAX_UPLOAD_BYTES;
+  return raw;
+};
+
 export const buildUploadObjectName = (jobId: string, filename: string): string => {
   const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
   return `uploads/${jobId}/${Date.now()}-${safeName}`;
@@ -13,6 +21,9 @@ export const buildUploadObjectName = (jobId: string, filename: string): string =
 
 export const buildResultObjectName = (jobId: string): string =>
   `results/${jobId}/study-guide.md`;
+
+export const buildTranscriptObjectName = (jobId: string): string =>
+  `results/${jobId}/transcript.txt`;
 
 export const createSignedUploadUrl = async (
   objectName: string,
@@ -55,6 +66,14 @@ export const downloadObjectBuffer = async (objectName: string): Promise<Buffer> 
   const bucketName = parseBucketEnv();
   const [data] = await storage.bucket(bucketName).file(objectName).download();
   return data;
+};
+
+export const getObjectSizeBytes = async (objectName: string): Promise<number> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  const [metadata] = await storage.bucket(bucketName).file(objectName).getMetadata();
+  const size = Number(metadata.size ?? 0);
+  return Number.isFinite(size) ? size : 0;
 };
 
 export const deleteObjects = async (objectNames: string[]): Promise<void> => {

@@ -5,6 +5,7 @@ import { GoogleGenAI } from '@google/genai';
 import { toPublicError } from './_lib/errors.js';
 import { CHAT_SYSTEM_INSTRUCTION } from './_lib/prompts.js';
 import { AccessError, authorizeChat } from './_lib/access.js';
+import { RateLimitError, enforceRateLimit, getRateLimit } from './_lib/rateLimit.js';
 
 type ChatMessage = {
   role: 'user' | 'model';
@@ -43,6 +44,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   try {
+    await enforceRateLimit(req, 'chat', getRateLimit('RATE_LIMIT_CHAT', 20));
     const { transcript, studyGuide, slides, rawNotes, messages, demoCode } = parseBody(req);
     if (!transcript || !studyGuide || !Array.isArray(messages) || messages.length === 0) {
       throw new Error('Missing chat payload.');
@@ -98,6 +100,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ reply });
   } catch (error) {
+    if (error instanceof RateLimitError) {
+      return res.status(error.status).json({ error: { code: error.code, message: error.message } });
+    }
     if (error instanceof AccessError) {
       return res.status(error.status).json({ error: { code: error.code, message: error.message } });
     }
