@@ -37,6 +37,44 @@ type ChatResponse = {
   };
 };
 
+type ParsedResponse<T> = {
+  json?: T;
+  text?: string;
+};
+
+const parseResponse = async <T>(response: Response): Promise<ParsedResponse<T>> => {
+  const contentType = response.headers.get('content-type') || '';
+  if (contentType.includes('application/json')) {
+    try {
+      return { json: (await response.json()) as T };
+    } catch {
+      // fall through to text
+    }
+  }
+  try {
+    return { text: await response.text() };
+  } catch {
+    return {};
+  }
+};
+
+const normalizeErrorMessage = (
+  response: Response,
+  jsonError?: { message?: string },
+  text?: string,
+  fallback?: string
+): string => {
+  if (jsonError?.message) return jsonError.message;
+  const trimmed = text?.trim();
+  if (trimmed) {
+    if (!trimmed.startsWith('<')) {
+      return trimmed.length > 300 ? `${trimmed.slice(0, 300)}...` : trimmed;
+    }
+  }
+  if (response.statusText) return response.statusText;
+  return fallback || 'Request failed.';
+};
+
 const getMimeType = (file: File) => {
   if (file.type) return file.type;
   if (file.name.toLowerCase().endsWith('.pdf')) return 'application/pdf';
@@ -74,9 +112,15 @@ const requestUploadUrl = async (
     body: JSON.stringify(body)
   });
 
-  const data = (await response.json()) as { uploadUrl?: string; objectName?: string; error?: { message?: string } };
-  if (!response.ok || !data.uploadUrl || !data.objectName) {
-    throw new Error(data.error?.message || 'Failed to prepare upload.');
+  const { json: data, text } = await parseResponse<{
+    uploadUrl?: string;
+    objectName?: string;
+    error?: { message?: string };
+  }>(response);
+  if (!response.ok || !data?.uploadUrl || !data?.objectName) {
+    throw new Error(
+      normalizeErrorMessage(response, data?.error, text, 'Failed to prepare upload.')
+    );
   }
 
   return { uploadUrl: data.uploadUrl, objectName: data.objectName };
@@ -162,11 +206,17 @@ const createJobRequest = async (
     body: JSON.stringify(bodyPayload)
   });
 
-  const data = (await response.json()) as JobCreateResponse;
-  if (!response.ok && !data.error) {
+  const { json: data, text } = await parseResponse<JobCreateResponse>(response);
+  if (!response.ok) {
+    return {
+      error: {
+        message: normalizeErrorMessage(response, data?.error, text, 'Processing failed.')
+      }
+    };
+  }
+  if (!data) {
     return { error: { message: 'Processing failed.' } };
   }
-
   return data;
 };
 
@@ -185,8 +235,10 @@ const startJobRequest = async (jobId: string, access?: AccessContext): Promise<v
   });
 
   if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as JobStatusResponse | null;
-    throw new Error(data?.error?.message || 'Processing failed.');
+    const { json: data, text } = await parseResponse<JobStatusResponse>(response);
+    throw new Error(
+      normalizeErrorMessage(response, data?.error, text, 'Processing failed.')
+    );
   }
 };
 
@@ -205,11 +257,15 @@ const getJobStatusRequest = async (
     headers
   });
 
-  const data = (await response.json()) as JobStatusResponse;
-  if (!response.ok && !data.error) {
-    return { error: { message: 'Status failed.' } };
+  const { json: data, text } = await parseResponse<JobStatusResponse>(response);
+  if (!response.ok) {
+    return {
+      error: {
+        message: normalizeErrorMessage(response, data?.error, text, 'Status failed.')
+      }
+    };
   }
-  return data;
+  return data ?? { error: { message: 'Status failed.' } };
 };
 
 const fetchResultText = async (resultUrl: string): Promise<string> => {
@@ -525,12 +581,14 @@ export const initializeChatSession = (
         body: JSON.stringify(payload)
       });
 
-      const data = (await response.json()) as ChatResponse;
-      if (!response.ok || data.error) {
-        throw new Error(data.error?.message || 'Chat failed.');
+      const { json: data, text } = await parseResponse<ChatResponse>(response);
+      if (!response.ok || data?.error) {
+        throw new Error(
+          normalizeErrorMessage(response, data?.error, text, 'Chat failed.')
+        );
       }
 
-      const reply = data.reply || '';
+      const reply = data?.reply || '';
       yield { text: reply };
     }
   };
