@@ -4,6 +4,7 @@ import {
   analyzeAudioLectureWithCleanup,
   cleanupUploadedFiles,
   initializeChatSession,
+  parseResponseText,
   resumeAnalysisJob
 } from './services/geminiService';
 import FileUpload from './components/FileUpload';
@@ -464,9 +465,10 @@ const App: React.FC = () => {
           transcriptText = await transcriptResponse.text();
         }
       }
+      const parsed = parseResponseText(resultText, transcriptText);
       setResult({
-        studyGuide: resultText.trim(),
-        transcript: transcriptText.trim() || '(No transcript provided.)'
+        studyGuide: parsed.studyGuide,
+        transcript: parsed.transcript
       });
       setActiveTab('study_guide');
       setStatus(AppStatus.COMPLETED);

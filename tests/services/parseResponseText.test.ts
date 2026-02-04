@@ -18,4 +18,20 @@ describe('parseResponseText', () => {
     expect(result.slides).toBe('Slides');
     expect(result.rawNotes).toBe('Notes');
   });
+
+  it('removes trailing appendix separators from study guide when transcript is unavailable', () => {
+    const raw =
+      '===STUDY_GUIDE===Guide content\n===SLIDES===Slide appendix\n===RAW_NOTES===Notes appendix';
+    const result = parseResponseText(raw);
+    expect(result.studyGuide).toBe('Guide content');
+  });
+
+  it('handles flexible separator spacing/casing', () => {
+    const raw =
+      '=== study_guide ===Guide\n=== Transcript ===Transcript text\n=== Slides ===Slides text';
+    const result = parseResponseText(raw);
+    expect(result.studyGuide).toBe('Guide');
+    expect(result.transcript).toBe('Transcript text');
+    expect(result.slides).toBe('Slides text');
+  });
 });

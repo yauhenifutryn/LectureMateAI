@@ -14,6 +14,7 @@ import {
 import { validateObjectName } from '../_lib/gcs.js';
 import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
 import { getModelId } from '../_lib/gemini.js';
+import { createResultReadUrl, createTranscriptReadUrl } from '../_lib/resultStorage.js';
 import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 export const config = { maxDuration: 60 };
@@ -41,6 +42,34 @@ const buildInputSummary = (audio?: FilePayload, slides: FilePayload[] = []) => (
   audio: Boolean(audio),
   slidesCount: slides.length
 });
+
+async function buildResponseUrls(job: {
+  id: string;
+  status: string;
+  resultUrl?: string;
+  transcriptUrl?: string;
+  request: { audio?: FilePayload };
+}) {
+  let resultUrl = job.resultUrl;
+  let transcriptUrl = job.transcriptUrl;
+
+  if (job.status === 'completed') {
+    try {
+      resultUrl = await createResultReadUrl(job.id);
+    } catch {
+      // Keep persisted fallback.
+    }
+    if (job.request.audio) {
+      try {
+        transcriptUrl = await createTranscriptReadUrl(job.id);
+      } catch {
+        // Keep persisted fallback.
+      }
+    }
+  }
+
+  return { resultUrl, transcriptUrl };
+}
 
 function parseBody(req: VercelRequest): ProcessBody {
   if (!req.body) return {};
@@ -229,13 +258,14 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
     authorizeJobAccess(req, job.access, demoCode);
 
     if (job.status === 'completed' || job.status === 'failed') {
+      const urls = await buildResponseUrls(job);
       return res.status(200).json({
         jobId,
         status: job.status,
         stage: job.stage,
         progress: job.progress,
-        resultUrl: job.resultUrl,
-        transcriptUrl: job.transcriptUrl,
+        resultUrl: urls.resultUrl,
+        transcriptUrl: urls.transcriptUrl,
         preview: job.preview,
         error: job.error,
         modelId: job.request.modelId,
@@ -244,13 +274,14 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
     }
 
     if (job.status === 'processing') {
+      const urls = await buildResponseUrls(job);
       return res.status(202).json({
         jobId,
         status: job.status,
         stage: job.stage,
         progress: job.progress,
-        resultUrl: job.resultUrl,
-        transcriptUrl: job.transcriptUrl,
+        resultUrl: urls.resultUrl,
+        transcriptUrl: urls.transcriptUrl,
         preview: job.preview,
         error: job.error,
         modelId: job.request.modelId,
@@ -324,28 +355,30 @@ async function handleStatus(req: VercelRequest, res: VercelResponse) {
             status: 'failed',
             error: timeoutError
           });
+          const urls = await buildResponseUrls(failed);
           return res.status(200).json({
             jobId,
             status: failed.status,
             stage: failed.stage,
-        progress: failed.progress,
-        resultUrl: failed.resultUrl,
-        transcriptUrl: failed.transcriptUrl,
-        preview: failed.preview,
-        error: failed.error,
-        modelId: job.request.modelId
+            progress: failed.progress,
+            resultUrl: urls.resultUrl,
+            transcriptUrl: urls.transcriptUrl,
+            preview: failed.preview,
+            error: failed.error,
+            modelId: job.request.modelId
           });
         }
       }
     }
 
+    const urls = await buildResponseUrls(job);
     return res.status(200).json({
       jobId,
       status: job.status,
       stage: job.stage,
       progress: job.progress,
-      resultUrl: job.resultUrl,
-      transcriptUrl: job.transcriptUrl,
+      resultUrl: urls.resultUrl,
+      transcriptUrl: urls.transcriptUrl,
       preview: job.preview,
       error: job.error,
       modelId: job.request.modelId,

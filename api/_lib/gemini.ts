@@ -14,6 +14,7 @@ type StudyInput = {
   audio?: FilePayload;
   slides?: FilePayload[];
   userContext?: string;
+  transcriptText?: string;
   modelId?: string;
 };
 
@@ -341,6 +342,19 @@ export async function cleanupGeminiFiles(apiKey: string, uploaded: UploadedFileR
   await Promise.all(
     uploaded.map((file) =>
       ai.files.delete({ name: file.fileName }).catch((error) => {
+        const status = Number((error as { status?: number })?.status ?? 0);
+        const message = String((error as { message?: string })?.message ?? '');
+        const expected =
+          status === 403 ||
+          status === 404 ||
+          message.includes('PERMISSION_DENIED') ||
+          message.includes('not exist');
+
+        if (expected) {
+          console.log(`Gemini cleanup skipped for ${file.fileName}: ${status || 'unknown'}`);
+          return;
+        }
+
         console.error('Gemini cleanup failed:', error);
       })
     )
@@ -469,8 +483,12 @@ export async function generateStudyGuideFromUploaded(
 ) {
   const ai = new GoogleGenAI({ apiKey });
   const parts: GeminiPart[] = [];
+  const useTranscriptOnly = Boolean(input.transcriptText && input.transcriptText.trim().length > 0);
 
   uploaded.forEach((file) => {
+    if (useTranscriptOnly && file.displayName === 'Lecture Audio') {
+      return;
+    }
     parts.push({
       fileData: {
         mimeType: file.mimeType,
@@ -479,7 +497,7 @@ export async function generateStudyGuideFromUploaded(
     });
   });
 
-  if (input.audio) {
+  if (input.audio && !useTranscriptOnly) {
     const hasUploadedAudio = uploaded.some((file) => file.displayName === 'Lecture Audio');
     if (!hasUploadedAudio) {
       const inlineAudio = await processFilePayload(ai, input.audio, 'Lecture Audio', 'audio', {
@@ -496,6 +514,12 @@ export async function generateStudyGuideFromUploaded(
   if (input.slides?.length) {
     const inlineParts = await buildInlinePartsForSlides(ai, input.slides);
     parts.push(...inlineParts);
+  }
+
+  if (useTranscriptOnly) {
+    parts.push({
+      text: ['===TRANSCRIPT===', input.transcriptText!.trim()].join('\n')
+    });
   }
 
   parts.push({ text: buildPromptText(input) });

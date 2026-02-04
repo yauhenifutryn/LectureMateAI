@@ -22,3 +22,11 @@ export async function storeTranscriptText(
   await uploadTextObject(objectName, content, 'text/markdown');
   return createSignedReadUrl(objectName);
 }
+
+export async function createResultReadUrl(jobId: string): Promise<string> {
+  return createSignedReadUrl(buildResultObjectName(jobId));
+}
+
+export async function createTranscriptReadUrl(jobId: string): Promise<string> {
+  return createSignedReadUrl(buildTranscriptObjectName(jobId));
+}

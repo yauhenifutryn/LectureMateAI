@@ -3,6 +3,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, authorizeHistory } from '../_lib/access.js';
 import { listJobHistory } from '../_lib/jobHistory.js';
 import { clearActiveJobId, getActiveJobId, getJobRecord } from '../_lib/jobStore.js';
+import { createResultReadUrl, createTranscriptReadUrl } from '../_lib/resultStorage.js';
 import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,7 +28,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   try {
     const access = await authorizeHistory(req, demoCode);
-    const items = await listJobHistory(access, limit);
+    const rawItems = await listJobHistory(access, limit);
+    const items = await Promise.all(
+      rawItems.map(async (item) => {
+        let resultUrl = item.resultUrl;
+        let transcriptUrl = item.transcriptUrl;
+
+        try {
+          resultUrl = await createResultReadUrl(item.jobId);
+        } catch {
+          // Keep stored URL fallback.
+        }
+
+        if (transcriptUrl !== undefined) {
+          try {
+            transcriptUrl = await createTranscriptReadUrl(item.jobId);
+          } catch {
+            // Keep stored URL fallback.
+          }
+        }
+
+        return {
+          ...item,
+          resultUrl,
+          transcriptUrl
+        };
+      })
+    );
     const activeJobId = await getActiveJobId(access);
     let activeJob: {
       jobId: string;

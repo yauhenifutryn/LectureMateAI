@@ -374,46 +374,72 @@ export function parseResponseText(text: string, transcriptOverride?: string): {
   slides?: string;
   rawNotes?: string;
 } {
-  const GUIDE_SEP = '===STUDY_GUIDE===';
-  const TRANS_SEP = '===TRANSCRIPT===';
-  const SLIDES_SEP = '===SLIDES===';
-  const RAW_SEP = '===RAW_NOTES===';
+  const findSeparator = (input: string, label: string): { index: number; length: number } | null => {
+    const match = new RegExp(`===\\s*${label}\\s*===`, 'i').exec(input);
+    if (!match) return null;
+    return { index: match.index, length: match[0].length };
+  };
 
-  const guideIdx = text.indexOf(GUIDE_SEP);
-  const transIdx = text.indexOf(TRANS_SEP);
-  const slidesIdx = text.indexOf(SLIDES_SEP);
-  const rawIdx = text.indexOf(RAW_SEP);
+  const guideSep = findSeparator(text, 'STUDY_GUIDE');
+  const transcriptSep = findSeparator(text, 'TRANSCRIPT');
+  const slidesSep = findSeparator(text, 'SLIDES');
+  const rawNotesSep = findSeparator(text, 'RAW_NOTES');
 
   let studyGuide = '';
   let transcript = '';
   let slides: string | undefined;
   let rawNotes: string | undefined;
 
-  if (guideIdx !== -1 && transIdx !== -1) {
-    studyGuide = text.substring(guideIdx + GUIDE_SEP.length, transIdx).trim();
+  if (guideSep && transcriptSep) {
+    studyGuide = text.substring(guideSep.index + guideSep.length, transcriptSep.index).trim();
     const transcriptEnd =
-      slidesIdx !== -1 && slidesIdx > transIdx
-        ? slidesIdx
-        : rawIdx !== -1 && rawIdx > transIdx
-          ? rawIdx
+      slidesSep && slidesSep.index > transcriptSep.index
+        ? slidesSep.index
+        : rawNotesSep && rawNotesSep.index > transcriptSep.index
+          ? rawNotesSep.index
           : text.length;
-    transcript = text.substring(transIdx + TRANS_SEP.length, transcriptEnd).trim();
-    if (slidesIdx !== -1) {
-      const slidesEnd = rawIdx !== -1 && rawIdx > slidesIdx ? rawIdx : text.length;
-      slides = text.substring(slidesIdx + SLIDES_SEP.length, slidesEnd).trim();
+    transcript = text.substring(transcriptSep.index + transcriptSep.length, transcriptEnd).trim();
+    if (slidesSep) {
+      const slidesEnd = rawNotesSep && rawNotesSep.index > slidesSep.index ? rawNotesSep.index : text.length;
+      slides = text.substring(slidesSep.index + slidesSep.length, slidesEnd).trim();
     }
-    if (rawIdx !== -1) {
-      rawNotes = text.substring(rawIdx + RAW_SEP.length).trim();
+    if (rawNotesSep) {
+      rawNotes = text.substring(rawNotesSep.index + rawNotesSep.length).trim();
     }
-  } else if (guideIdx !== -1) {
-    studyGuide = text.substring(guideIdx + GUIDE_SEP.length).trim();
-    transcript = '';
+  } else if (guideSep) {
+    const firstTailSep = [transcriptSep?.index, slidesSep?.index, rawNotesSep?.index]
+      .filter((value): value is number => value !== undefined && value > guideSep.index)
+      .sort((a, b) => a - b)[0];
+    studyGuide = text
+      .substring(guideSep.index + guideSep.length, firstTailSep ?? text.length)
+      .trim();
+    transcript = transcriptSep
+      ? text.substring(transcriptSep.index + transcriptSep.length, text.length).trim()
+      : '';
+  } else if (transcriptSep) {
+    studyGuide = text.substring(0, transcriptSep.index).trim();
+    const transcriptEnd =
+      slidesSep && slidesSep.index > transcriptSep.index
+        ? slidesSep.index
+        : rawNotesSep && rawNotesSep.index > transcriptSep.index
+          ? rawNotesSep.index
+          : text.length;
+    transcript = text.substring(transcriptSep.index + transcriptSep.length, transcriptEnd).trim();
+    if (slidesSep) {
+      const slidesEnd = rawNotesSep && rawNotesSep.index > slidesSep.index ? rawNotesSep.index : text.length;
+      slides = text.substring(slidesSep.index + slidesSep.length, slidesEnd).trim();
+    }
+    if (rawNotesSep) {
+      rawNotes = text.substring(rawNotesSep.index + rawNotesSep.length).trim();
+    }
   } else {
-    studyGuide = text;
+    studyGuide = text.trim();
     transcript = '';
   }
 
   studyGuide = studyGuide
+    .replace(/===\s*(TRANSCRIPT|SLIDES|RAW_NOTES)\s*===([\s\S]*)$/i, '')
+    .replace(/^\s*===\s*STUDY_GUIDE\s*===/i, '')
     .replace(/^```markdown/, '')
     .replace(/^```/, '')
     .replace(/```$/, '')

@@ -44,6 +44,16 @@ const buildPreview = (text: string, maxChars = 2000): string => {
   return text.slice(0, maxChars).trim();
 };
 
+const stripResponseSections = (text: string): string => {
+  if (!text) return '';
+  let output = text.replace(/^\s*===\s*STUDY_GUIDE\s*===/i, '').trim();
+  const stopMatch = /===\s*(TRANSCRIPT|SLIDES|RAW_NOTES)\s*===/i.exec(output);
+  if (stopMatch && typeof stopMatch.index === 'number' && stopMatch.index >= 0) {
+    output = output.slice(0, stopMatch.index).trim();
+  }
+  return output;
+};
+
 export async function runJob(jobId: string): Promise<WorkerResult> {
   const job = await getJobRecord(jobId);
   if (!job) {
@@ -189,12 +199,13 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
         audio: job.request.audio,
         slides: job.request.slides,
         userContext: job.request.userContext,
+        transcriptText: transcriptText ?? undefined,
         modelId: job.request.modelId
       },
       uploaded
     );
-
-    const resultUrl = await storeResultMarkdown(resultText, jobId);
+    const cleanStudyGuideText = stripResponseSections(resultText) || resultText.trim();
+    const resultUrl = await storeResultMarkdown(cleanStudyGuideText, jobId);
     const transcriptUrl = transcriptText
       ? await storeTranscriptText(transcriptText, jobId)
       : null;
@@ -205,7 +216,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       progress: 100,
       resultUrl: resultUrl || undefined,
       transcriptUrl: transcriptUrl || undefined,
-      preview: buildPreview(resultText),
+      preview: buildPreview(cleanStudyGuideText),
       error: undefined
     });
     await recordJobHistory(completed).catch((error) => {
