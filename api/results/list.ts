@@ -2,6 +2,7 @@ import '../_lib/warnings.js';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { AccessError, authorizeHistory } from '../_lib/access.js';
 import { listJobHistory } from '../_lib/jobHistory.js';
+import { clearActiveJobId, getActiveJobId, getJobRecord } from '../_lib/jobStore.js';
 import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -27,7 +28,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     const access = await authorizeHistory(req, demoCode);
     const items = await listJobHistory(access, limit);
-    return res.status(200).json({ items });
+    const activeJobId = await getActiveJobId(access);
+    let activeJob: {
+      jobId: string;
+      status: string;
+      stage?: string;
+      progress?: number;
+      modelId?: string;
+      error?: { code?: string; message: string };
+    } | null = null;
+
+    if (activeJobId) {
+      const job = await getJobRecord(activeJobId);
+      if (!job) {
+        await clearActiveJobId(access, activeJobId);
+      } else if (job.status === 'queued' || job.status === 'processing') {
+        activeJob = {
+          jobId: job.id,
+          status: job.status,
+          stage: job.stage,
+          progress: job.progress,
+          modelId: job.request.modelId,
+          error: job.error
+        };
+      } else {
+        await clearActiveJobId(access, activeJobId);
+      }
+    }
+
+    return res.status(200).json({ items, activeJob });
   } catch (error) {
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });

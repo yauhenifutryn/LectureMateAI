@@ -13,7 +13,7 @@ import { cleanupBlobUrls } from '../api/_lib/blobCleanup.js';
 import { toPublicError } from '../api/_lib/errors.js';
 import { recordJobHistory } from '../api/_lib/jobHistory.js';
 import { storeResultMarkdown, storeTranscriptText } from '../api/_lib/resultStorage.js';
-import { getJobRecord, updateJobRecord } from '../api/_lib/jobStore.js';
+import { clearActiveJobId, getJobRecord, updateJobRecord } from '../api/_lib/jobStore.js';
 import { getMaxUploadBytes, getObjectSizeBytes } from '../api/_lib/gcs.js';
 
 type WorkerResult = {
@@ -125,13 +125,16 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
     while (true) {
       const readiness = await checkGeminiFiles(apiKey, uploaded);
       if (readiness.failed) {
-        const failed = await updateJobRecord(jobId, {
-          status: 'failed',
-          stage: 'polling',
-          error: { code: 'gemini_processing_failed', message: 'Gemini file processing failed.' }
-        });
-        shouldCleanupBlob = cleanupUrls.length > 0;
-        shouldCleanupGemini = true;
+      const failed = await updateJobRecord(jobId, {
+        status: 'failed',
+        stage: 'polling',
+        error: { code: 'gemini_processing_failed', message: 'Gemini file processing failed.' }
+      });
+      await clearActiveJobId(job.access, jobId).catch((clearError) => {
+        console.error('Failed to clear active job id:', clearError);
+      });
+      shouldCleanupBlob = cleanupUrls.length > 0;
+      shouldCleanupGemini = true;
         return {
           jobId,
           status: failed.status,
@@ -208,6 +211,9 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
     await recordJobHistory(completed).catch((error) => {
       console.error('Failed to record job history:', error);
     });
+    await clearActiveJobId(job.access, jobId).catch((clearError) => {
+      console.error('Failed to clear active job id:', clearError);
+    });
 
     shouldCleanupBlob = cleanupUrls.length > 0;
     shouldCleanupGemini = true;
@@ -264,6 +270,9 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       status: 'failed',
       stage: job.stage,
       error: publicError
+    });
+    await clearActiveJobId(job.access, jobId).catch((clearError) => {
+      console.error('Failed to clear active job id:', clearError);
     });
     shouldCleanupBlob = cleanupUrls.length > 0;
     shouldCleanupGemini = uploaded.length > 0;

@@ -294,6 +294,30 @@ const fetchTranscriptText = async (transcriptUrl: string): Promise<string> => {
   return response.text();
 };
 
+const buildAnalysisFromStatus = async (
+  status: JobStatusResponse,
+  fetchResult: (resultUrl: string) => Promise<string>
+): Promise<AnalysisResult> => {
+  if (status.error) {
+    throw new Error(status.error.message || 'Processing failed.');
+  }
+
+  if (!status.resultUrl) {
+    throw new Error('Processing result missing.');
+  }
+
+  const resultText = await fetchResult(status.resultUrl);
+  let transcriptText: string | undefined;
+  if (status.transcriptUrl) {
+    try {
+      transcriptText = await fetchTranscriptText(status.transcriptUrl);
+    } catch (error) {
+      console.error('Failed to fetch transcript:', error);
+    }
+  }
+  return parseResponseText(resultText, transcriptText);
+};
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const TRANSIENT_ERROR_CODES = new Set(['dispatch_failed', 'overloaded_retry', 'generation_retry']);
@@ -468,24 +492,7 @@ export const createAnalyzeAudioLecture =
     options?.onStatusUpdate
   );
 
-    if (status.error) {
-      throw new Error(status.error.message || 'Processing failed.');
-    }
-
-    if (!status.resultUrl) {
-      throw new Error('Processing result missing.');
-    }
-
-    const resultText = await fetchResult(status.resultUrl);
-    let transcriptText: string | undefined;
-    if (status.transcriptUrl) {
-      try {
-        transcriptText = await fetchTranscriptText(status.transcriptUrl);
-      } catch (error) {
-        console.error('Failed to fetch transcript:', error);
-      }
-    }
-    return parseResponseText(resultText, transcriptText);
+    return buildAnalysisFromStatus(status, fetchResult);
   };
 
 export const analyzeAudioLecture = createAnalyzeAudioLecture({
@@ -496,6 +503,22 @@ export const analyzeAudioLecture = createAnalyzeAudioLecture({
   fetchResultText,
   sleep
 });
+
+export const resumeAnalysisJob = async (
+  jobId: string,
+  options?: AnalyzeOptions
+): Promise<AnalysisResult> => {
+  options?.onStageChange?.('processing');
+  const status = await pollJobStatus(
+    jobId,
+    options?.access,
+    getJobStatusRequest,
+    sleep,
+    startJobRequest,
+    options?.onStatusUpdate
+  );
+  return buildAnalysisFromStatus(status, fetchResultText);
+};
 
 export const createRunAnalysisWithCleanup =
   ({

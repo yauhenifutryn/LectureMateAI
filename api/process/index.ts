@@ -6,6 +6,7 @@ import { authorizeJobAccess } from '../_lib/jobAccess.js';
 import { toPublicError } from '../_lib/errors.js';
 import {
   buildJobId,
+  setActiveJobId,
   getJobRecord,
   setJobRecord,
   updateJobRecord
@@ -154,6 +155,10 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
       updatedAt: now,
       progress: 0
     });
+    await setActiveJobId(
+      { mode: access.mode, code: access.code },
+      jobId
+    );
 
     return res.status(202).json({ jobId });
   } catch (error) {

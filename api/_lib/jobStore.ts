@@ -1,6 +1,6 @@
 import { kv } from '@vercel/kv';
 import crypto from 'crypto';
-import { ensureKvConfigured } from './access.js';
+import { ensureKvConfigured, normalizeDemoCode } from './access.js';
 
 export type JobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
@@ -45,6 +45,7 @@ export type JobRecord = {
 };
 
 const JOB_PREFIX = 'job:';
+const ACTIVE_JOB_PREFIX = 'active-job:';
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
 const KV_RETRY_ATTEMPTS = 2;
 
@@ -62,6 +63,14 @@ async function withKvRetry<T>(operation: () => Promise<T>): Promise<T> {
 
 export function getJobKey(jobId: string): string {
   return `${JOB_PREFIX}${jobId}`;
+}
+
+function getActiveJobKey(access: JobAccess): string | null {
+  if (access.mode === 'admin') return `${ACTIVE_JOB_PREFIX}admin`;
+  if (access.mode === 'demo' && access.code) {
+    return `${ACTIVE_JOB_PREFIX}demo:${normalizeDemoCode(access.code)}`;
+  }
+  return null;
 }
 
 export function buildJobId(): string {
@@ -104,4 +113,30 @@ export async function updateJobRecord(
 
   await setJobRecord(updated);
   return updated;
+}
+
+export async function setActiveJobId(access: JobAccess, jobId: string): Promise<void> {
+  ensureKvConfigured();
+  const key = getActiveJobKey(access);
+  if (!key) return;
+  await withKvRetry(() => kv.set(key, jobId, { ex: getJobTtlSeconds() }));
+}
+
+export async function getActiveJobId(access: JobAccess): Promise<string | null> {
+  ensureKvConfigured();
+  const key = getActiveJobKey(access);
+  if (!key) return null;
+  const value = await withKvRetry(() => kv.get<string>(key));
+  return typeof value === 'string' && value ? value : null;
+}
+
+export async function clearActiveJobId(access: JobAccess, expectedJobId?: string): Promise<void> {
+  ensureKvConfigured();
+  const key = getActiveJobKey(access);
+  if (!key) return;
+  if (expectedJobId) {
+    const current = await withKvRetry(() => kv.get<string>(key));
+    if (current !== expectedJobId) return;
+  }
+  await withKvRetry(() => kv.del(key));
 }

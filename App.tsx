@@ -3,7 +3,8 @@ import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessCo
 import {
   analyzeAudioLectureWithCleanup,
   cleanupUploadedFiles,
-  initializeChatSession
+  initializeChatSession,
+  resumeAnalysisJob
 } from './services/geminiService';
 import FileUpload from './components/FileUpload';
 import AudioRecorder from './components/AudioRecorder';
@@ -23,6 +24,14 @@ type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 type ProcessingLogTone = 'info' | 'warning' | 'error';
 type ProcessingLog = { message: string; tone: ProcessingLogTone };
+type ActiveJobSummary = {
+  jobId: string;
+  status: 'queued' | 'processing';
+  stage?: string;
+  progress?: number;
+  modelId?: string;
+  error?: { code?: string; message: string };
+};
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   
@@ -151,6 +160,12 @@ const App: React.FC = () => {
     setHasAutoOpenedHistory(false);
     void loadHistory(true);
   }, [access?.mode, access?.token, isAdminRoute]);
+
+  useEffect(() => {
+    if (access?.mode === 'demo' && modelId === 'gemini-3-pro-preview') {
+      setModelId('gemini-3-flash-preview');
+    }
+  }, [access?.mode, modelId]);
 
   const handleAudioSelect = (files: FileData[]) => {
     if (files.length > 0) {
@@ -352,6 +367,50 @@ const App: React.FC = () => {
     }
   };
 
+  const handleResumeJob = async (job: ActiveJobSummary) => {
+    if (!access) return;
+    setError(null);
+    setStatus(AppStatus.PROCESSING);
+    setProcessingModel(job.modelId || null);
+    setProcessingLog({
+      message: `Resuming previous job ${job.jobId.slice(0, 8)}...`,
+      tone: 'info'
+    });
+    try {
+      const analysis = await resumeAnalysisJob(job.jobId, {
+        access,
+        onStatusUpdate: (statusUpdate) => {
+          if (statusUpdate?.error?.message) {
+            setProcessingLog({
+              message: statusUpdate.error.message,
+              tone: toLogTone(statusUpdate.error.code)
+            });
+            return;
+          }
+
+          const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
+          const inputSummary = formatInputSummary(statusUpdate.inputs);
+          const combined = [message, inputSummary].filter(Boolean).join(' ');
+          setProcessingLog({ message: combined, tone: 'info' });
+          if (statusUpdate.modelId) {
+            setProcessingModel(statusUpdate.modelId);
+          }
+        }
+      });
+      setResult(analysis);
+      setStatus(AppStatus.COMPLETED);
+      setActiveTab('study_guide');
+      setProcessingLog(null);
+      setProcessingModel(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unable to resume previous job.';
+      setError(message);
+      setStatus(AppStatus.ERROR);
+      setProcessingLog(null);
+      setProcessingModel(null);
+    }
+  };
+
   const loadHistory = async (autoOpen = true) => {
     if (!access) return;
     setHistoryLoading(true);
@@ -365,12 +424,17 @@ const App: React.FC = () => {
         url += `&demoCode=${encodeURIComponent(access.token)}`;
       }
       const response = await fetch(url, { headers, cache: 'no-store' });
-      const data = await response.json();
+      const data = (await response.json()) as { items?: HistoryItem[]; activeJob?: ActiveJobSummary | null; error?: { message?: string } };
       if (!response.ok) {
         throw new Error(data?.error?.message || 'Unable to load history.');
       }
       const items = (data.items || []) as HistoryItem[];
       setHistory(items);
+      if (autoOpen && !result && !hasAutoOpenedHistory && data.activeJob) {
+        setHasAutoOpenedHistory(true);
+        await handleResumeJob(data.activeJob);
+        return;
+      }
       if (autoOpen && !result && items.length > 0 && !hasAutoOpenedHistory) {
         setHasAutoOpenedHistory(true);
         await handleOpenHistory(items[0]);
