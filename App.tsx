@@ -56,7 +56,6 @@ const App: React.FC = () => {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
-  const [hasAutoOpenedHistory, setHasAutoOpenedHistory] = useState(false);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
 
   // Chat State
@@ -158,8 +157,7 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!access || isAdminRoute) return;
-    setHasAutoOpenedHistory(false);
-    void loadHistory(true);
+    void loadHistory();
   }, [access?.mode, access?.token, isAdminRoute]);
 
   useEffect(() => {
@@ -270,7 +268,7 @@ const App: React.FC = () => {
       setProcessingModel(null);
       setChatMessages([]);
       chatSessionRef.current = null; 
-      void loadHistory(false);
+      void loadHistory();
     } catch (err: any) {
       console.error(err);
       const message = err.message || "An unexpected error occurred during analysis.";
@@ -315,7 +313,6 @@ const App: React.FC = () => {
     setProcessingModel(null);
     setChatMessages([]);
     chatSessionRef.current = null;
-    setHasAutoOpenedHistory(false);
     setShowResetConfirm(false);
   };
 
@@ -326,7 +323,6 @@ const App: React.FC = () => {
     setProcessingModel(null);
     setHistory([]);
     setHistoryError(null);
-    setHasAutoOpenedHistory(false);
   };
 
   const handleCancelReset = () => setShowResetConfirm(false);
@@ -412,7 +408,7 @@ const App: React.FC = () => {
     }
   };
 
-  const loadHistory = async (autoOpen = true) => {
+  const loadHistory = async () => {
     if (!access) return;
     setHistoryLoading(true);
     setHistoryError(null);
@@ -431,15 +427,6 @@ const App: React.FC = () => {
       }
       const items = (data.items || []) as HistoryItem[];
       setHistory(items);
-      if (autoOpen && !result && !hasAutoOpenedHistory && data.activeJob) {
-        setHasAutoOpenedHistory(true);
-        await handleResumeJob(data.activeJob);
-        return;
-      }
-      if (autoOpen && !result && items.length > 0 && !hasAutoOpenedHistory) {
-        setHasAutoOpenedHistory(true);
-        await handleOpenHistory(items[0]);
-      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load history.';
       setHistoryError(message);

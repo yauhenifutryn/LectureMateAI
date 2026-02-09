@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
 import { Icons } from './Icon';
 
 interface StudyGuideProps {
@@ -50,7 +52,8 @@ const StudyGuide: React.FC<StudyGuideProps> = ({ content }) => {
 
       <div className="p-8 md:p-12 prose prose-slate prose-headings:font-serif prose-headings:text-slate-800 prose-p:text-slate-600 prose-li:text-slate-600 max-w-none">
         <ReactMarkdown
-           remarkPlugins={[remarkGfm]}
+           remarkPlugins={[remarkGfm, remarkMath]}
+           rehypePlugins={[rehypeKatex]}
            components={{
             h1: ({node, ...props}) => <h1 className="text-3xl font-bold border-b border-slate-200 pb-4 mb-6 text-primary-900" {...props} />,
             h2: ({node, ...props}) => <h2 className="text-2xl font-semibold mt-8 mb-4 text-primary-800" {...props} />,
