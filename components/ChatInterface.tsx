@@ -17,10 +17,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatSession, initialMessa
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const updateStreamingMessage = (messageId: string, content: string) => {
+    setMessages((prev) =>
+      prev.map((message) => (message.id === messageId ? { ...message, content } : message))
+    );
   };
 
   useEffect(() => {
@@ -63,9 +68,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatSession, initialMessa
         const text = chunk.text;
         if (text) {
           fullContent += text;
-          setMessages(prev => 
-            prev.map(m => m.id === botMsgId ? { ...m, content: fullContent } : m)
-          );
+          updateStreamingMessage(botMsgId, fullContent);
         }
       }
 
@@ -162,7 +165,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ chatSession, initialMessa
       <div className="p-4 bg-white border-t border-slate-200">
         <form onSubmit={handleSubmit} className="relative flex items-end gap-2">
           <textarea
-            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}

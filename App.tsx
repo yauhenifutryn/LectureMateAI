@@ -25,6 +25,13 @@ type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 type ProcessingLogTone = 'info' | 'warning' | 'error';
 type ProcessingLog = { message: string; tone: ProcessingLogTone };
+type StatusUpdate = {
+  status?: string;
+  stage?: string;
+  inputs?: { audio: boolean; slidesCount: number };
+  modelId?: string;
+  error?: { code?: string; message?: string };
+};
 type ActiveJobSummary = {
   jobId: string;
   status: 'queued' | 'processing';
@@ -109,6 +116,29 @@ const App: React.FC = () => {
     if (!code) return 'info';
     if (['dispatch_failed', 'generation_retry', 'overloaded_retry'].includes(code)) return 'warning';
     return 'error';
+  };
+
+  const clearProcessingIndicators = () => {
+    setProcessingLog(null);
+    setProcessingModel(null);
+  };
+
+  const applyStatusUpdate = (statusUpdate?: StatusUpdate) => {
+    if (statusUpdate?.error?.message) {
+      setProcessingLog({
+        message: statusUpdate.error.message,
+        tone: toLogTone(statusUpdate.error.code)
+      });
+      return;
+    }
+
+    const message = formatStageMessage(statusUpdate?.stage, statusUpdate?.status);
+    const inputSummary = formatInputSummary(statusUpdate?.inputs);
+    const combined = [message, inputSummary].filter(Boolean).join(' ');
+    setProcessingLog({ message: combined, tone: 'info' });
+    if (statusUpdate?.modelId) {
+      setProcessingModel(statusUpdate.modelId);
+    }
   };
 
   const handleAuthorize = (next: AccessContext) => {
@@ -222,8 +252,7 @@ const App: React.FC = () => {
       setActiveTab(startState.activeTab);
       setError(startState.error);
       setUploadCheckpoint(null);
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
 
       const resolvedModelId =
         isDemo && modelId === 'gemini-3-pro-preview' ? 'gemini-3-flash-preview' : modelId;
@@ -241,21 +270,7 @@ const App: React.FC = () => {
           setUploadCheckpoint(formatUploadCheckpoint(urls.length));
         },
         onStatusUpdate: (statusUpdate) => {
-          if (statusUpdate?.error?.message) {
-            setProcessingLog({
-              message: statusUpdate.error.message,
-              tone: toLogTone(statusUpdate.error.code)
-            });
-            return;
-          }
-
-          const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
-          const inputSummary = formatInputSummary(statusUpdate.inputs);
-          const combined = [message, inputSummary].filter(Boolean).join(' ');
-          setProcessingLog({ message: combined, tone: 'info' });
-          if (statusUpdate.modelId) {
-            setProcessingModel(statusUpdate.modelId);
-          }
+          applyStatusUpdate(statusUpdate);
         },
         access: access || undefined,
         modelId: resolvedModelId
@@ -264,8 +279,7 @@ const App: React.FC = () => {
       setStatus(AppStatus.COMPLETED);
       setPendingBlobUrls([]);
       setUploadCheckpoint(null);
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
       setChatMessages([]);
       chatSessionRef.current = null; 
       void loadHistory();
@@ -285,16 +299,14 @@ const App: React.FC = () => {
       setError(message);
       setStatus(AppStatus.ERROR);
       setUploadCheckpoint(null);
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
     }
   };
 
   const handleCancelProcessing = () => {
     if (window.confirm("Stop processing? The current analysis will be lost.")) {
       setStatus(AppStatus.IDLE);
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
     }
   };
 
@@ -309,8 +321,7 @@ const App: React.FC = () => {
     setActiveTab('study_guide');
     setStatus(AppStatus.IDLE);
     setError(null);
-    setProcessingLog(null);
-    setProcessingModel(null);
+    clearProcessingIndicators();
     setChatMessages([]);
     chatSessionRef.current = null;
     setShowResetConfirm(false);
@@ -319,8 +330,7 @@ const App: React.FC = () => {
   const handleLock = () => {
     void cleanupPendingUploads(access);
     setAccess(null);
-    setProcessingLog(null);
-    setProcessingModel(null);
+    clearProcessingIndicators();
     setHistory([]);
     setHistoryError(null);
   };
@@ -368,7 +378,7 @@ const App: React.FC = () => {
     if (!access) return;
     setError(null);
     setStatus(AppStatus.PROCESSING);
-    setProcessingModel(job.modelId || null);
+    setProcessingModel(job.modelId ?? null);
     setProcessingLog({
       message: `Resuming previous job ${job.jobId.slice(0, 8)}...`,
       tone: 'info'
@@ -377,34 +387,18 @@ const App: React.FC = () => {
       const analysis = await resumeAnalysisJob(job.jobId, {
         access,
         onStatusUpdate: (statusUpdate) => {
-          if (statusUpdate?.error?.message) {
-            setProcessingLog({
-              message: statusUpdate.error.message,
-              tone: toLogTone(statusUpdate.error.code)
-            });
-            return;
-          }
-
-          const message = formatStageMessage(statusUpdate.stage, statusUpdate.status);
-          const inputSummary = formatInputSummary(statusUpdate.inputs);
-          const combined = [message, inputSummary].filter(Boolean).join(' ');
-          setProcessingLog({ message: combined, tone: 'info' });
-          if (statusUpdate.modelId) {
-            setProcessingModel(statusUpdate.modelId);
-          }
+          applyStatusUpdate(statusUpdate);
         }
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
       setActiveTab('study_guide');
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to resume previous job.';
       setError(message);
       setStatus(AppStatus.ERROR);
-      setProcessingLog(null);
-      setProcessingModel(null);
+      clearProcessingIndicators();
     }
   };
 
@@ -421,7 +415,7 @@ const App: React.FC = () => {
         url += `&demoCode=${encodeURIComponent(access.token)}`;
       }
       const response = await fetch(url, { headers, cache: 'no-store' });
-      const data = (await response.json()) as { items?: HistoryItem[]; activeJob?: ActiveJobSummary | null; error?: { message?: string } };
+      const data = (await response.json()) as { items?: HistoryItem[]; error?: { message?: string } };
       if (!response.ok) {
         throw new Error(data?.error?.message || 'Unable to load history.');
       }
@@ -747,7 +741,9 @@ const App: React.FC = () => {
                   </h3>
                   <button
                     type="button"
-                    onClick={() => loadHistory(false)}
+                    onClick={() => {
+                      void loadHistory();
+                    }}
                     className="text-xs font-semibold text-primary-600 hover:text-primary-700"
                     disabled={historyLoading}
                   >
