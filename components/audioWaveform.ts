@@ -8,6 +8,20 @@ export function appendAmplitude(
   return next.slice(next.length - maxLength);
 }
 
+const VISUALIZER_NOISE_FLOOR = 0.003;
+const VISUALIZER_GAIN = 12;
+const VISUALIZER_CURVE = 0.75;
+
+export function mapRmsToAmplitude(rms: number): number {
+  if (!Number.isFinite(rms) || rms <= VISUALIZER_NOISE_FLOOR) {
+    return 0;
+  }
+
+  const normalized = (rms - VISUALIZER_NOISE_FLOOR) / (1 - VISUALIZER_NOISE_FLOOR);
+  const amplified = Math.pow(normalized * VISUALIZER_GAIN, VISUALIZER_CURVE);
+  return Math.min(1, amplified);
+}
+
 export function resampleWaveformData(data: number[], targetBars: number): number[] {
   if (targetBars <= 0) return [];
   if (data.length === 0) return new Array(targetBars).fill(0);

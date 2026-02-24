@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icons } from './Icon';
-import { appendAmplitude } from './audioWaveform';
+import { appendAmplitude, mapRmsToAmplitude } from './audioWaveform';
 
 interface AudioRecorderProps {
   onRecordingComplete: (file: File) => void;
@@ -128,7 +128,7 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
         const rms = Math.sqrt(sum / bufferLength);
         
         // Push simplified amplitude to history
-        const amp = Math.min(1, rms * 5);
+        const amp = mapRmsToAmplitude(rms);
 
         // Rendering Logic: iPhone-style infinite run
         const width = canvas.width;
