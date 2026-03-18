@@ -77,12 +77,10 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
     throw new Error('Server Config Error: Missing API Key');
   }
 
-  const cleanupUrls = [
-    ...(job.request.audio?.objectName ? [job.request.audio.objectName] : []),
-    ...job.request.slides.map((slide) => slide.objectName)
-  ];
+  const audioCleanupUrls = job.request.audio?.objectName ? [job.request.audio.objectName] : [];
+  const slideCleanupUrls = job.request.slides.map((slide) => slide.objectName);
 
-  let shouldCleanupBlob = false;
+  let blobCleanupUrls: string[] = [];
   let shouldCleanupGemini = false;
   let uploaded = job.uploaded ?? [];
 
@@ -143,7 +141,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       await clearActiveJobId(job.access, jobId).catch((clearError) => {
         console.error('Failed to clear active job id:', clearError);
       });
-      shouldCleanupBlob = cleanupUrls.length > 0;
+      blobCleanupUrls = [...audioCleanupUrls];
       shouldCleanupGemini = true;
         return {
           jobId,
@@ -226,7 +224,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       console.error('Failed to clear active job id:', clearError);
     });
 
-    shouldCleanupBlob = cleanupUrls.length > 0;
+    blobCleanupUrls = [...audioCleanupUrls, ...slideCleanupUrls];
     shouldCleanupGemini = true;
 
     return {
@@ -285,7 +283,7 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
     await clearActiveJobId(job.access, jobId).catch((clearError) => {
       console.error('Failed to clear active job id:', clearError);
     });
-    shouldCleanupBlob = cleanupUrls.length > 0;
+    blobCleanupUrls = [...audioCleanupUrls];
     shouldCleanupGemini = uploaded.length > 0;
     return {
       jobId,
@@ -300,8 +298,8 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
         console.error('Gemini cleanup failed:', error);
       });
     }
-    if (shouldCleanupBlob && cleanupUrls.length > 0) {
-      await cleanupBlobUrls(cleanupUrls, console);
+    if (blobCleanupUrls.length > 0) {
+      await cleanupBlobUrls(blobCleanupUrls, console);
     }
   }
 }

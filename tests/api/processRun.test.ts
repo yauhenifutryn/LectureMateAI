@@ -18,6 +18,15 @@ vi.mock('@vercel/kv', () => ({
   kv: kvMock
 }));
 
+vi.mock('../../api/_lib/rateLimit', () => ({
+  RateLimitError: class RateLimitError extends Error {
+    status = 429;
+    code = 'rate_limited';
+  },
+  enforceRateLimit: vi.fn(async () => {}),
+  getRateLimit: vi.fn(() => 10)
+}));
+
 const fetchMock = vi.fn();
 
 const createRes = () => {

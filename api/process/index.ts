@@ -162,7 +162,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     const now = new Date().toISOString();
 
     let resolvedModelId = getModelId(modelId);
-    if (access.mode === 'demo' && resolvedModelId === 'gemini-3-pro-preview') {
+    if (access.mode === 'demo' && resolvedModelId === 'gemini-3.1-pro-preview') {
       resolvedModelId = 'gemini-3-flash-preview';
     }
 

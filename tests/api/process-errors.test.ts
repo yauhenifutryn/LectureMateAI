@@ -16,4 +16,9 @@ describe('toPublicError', () => {
     const err = new Error('Transcript missing in output.');
     expect(toPublicError(err).code).toBe('transcript_missing');
   });
+
+  it('maps unavailable models', () => {
+    const err = new Error('models/gemini-3-pro-preview is not found for API version v1beta');
+    expect(toPublicError(err).code).toBe('model_unavailable');
+  });
 });

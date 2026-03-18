@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildJobId, getJobRecord, setJobRecord } from '../../api/_lib/jobStore';
 import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
+  generateTranscriptFromUploaded,
   OverloadRetryError
 } from '../../api/_lib/gemini';
-import { storeResultMarkdown } from '../../api/_lib/resultStorage';
+import { storeResultMarkdown, storeTranscriptText } from '../../api/_lib/resultStorage';
 import { cleanupBlobUrls } from '../../api/_lib/blobCleanup';
 import { runJob } from '../../worker/handler';
 
@@ -17,7 +18,9 @@ const kvMock = vi.hoisted(() => ({
     kvStore.set(key, value);
     return 'OK';
   }),
-  get: vi.fn(async (key: string) => kvStore.get(key) ?? null)
+  get: vi.fn(async (key: string) => kvStore.get(key) ?? null),
+  lpush: vi.fn(async () => 1),
+  ltrim: vi.fn(async () => 'OK')
 }));
 
 vi.mock('@vercel/kv', () => ({
@@ -40,6 +43,7 @@ vi.mock('../../api/_lib/gemini', () => ({
     total: 1
   })),
   getModelId: vi.fn((modelId?: string) => modelId ?? 'gemini-3-flash-preview'),
+  generateTranscriptFromUploaded: vi.fn(async () => 'Transcript'),
   generateStudyGuideFromUploaded: vi.fn(
     async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
   ),
@@ -61,11 +65,17 @@ vi.mock('../../api/_lib/gemini', () => ({
 }));
 
 vi.mock('../../api/_lib/resultStorage', () => ({
-  storeResultMarkdown: vi.fn(async () => 'https://gcs/results.md')
+  storeResultMarkdown: vi.fn(async () => 'https://gcs/results.md'),
+  storeTranscriptText: vi.fn(async () => 'https://gcs/transcript.md')
 }));
 
 vi.mock('../../api/_lib/blobCleanup', () => ({
   cleanupBlobUrls: vi.fn(async () => {})
+}));
+
+vi.mock('../../api/_lib/gcs', () => ({
+  getMaxUploadBytes: vi.fn(() => 512 * 1024 * 1024),
+  getObjectSizeBytes: vi.fn(async () => 1024)
 }));
 
 const buildJob = (jobId: string) => ({
@@ -87,18 +97,29 @@ const buildJob = (jobId: string) => ({
 });
 
 describe('worker runJob', () => {
+  let infoSpy: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     kvStore.clear();
     kvMock.set.mockClear();
     kvMock.get.mockClear();
+    kvMock.lpush.mockClear();
+    kvMock.ltrim.mockClear();
     vi.mocked(uploadGeminiFiles).mockClear();
     vi.mocked(checkGeminiFiles).mockClear();
+    vi.mocked(generateTranscriptFromUploaded).mockClear();
     vi.mocked(generateStudyGuideFromUploaded).mockClear();
     vi.mocked(storeResultMarkdown).mockClear();
+    vi.mocked(storeTranscriptText).mockClear();
     vi.mocked(cleanupBlobUrls).mockClear();
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.KV_REST_API_URL = 'https://example.com';
     process.env.KV_REST_API_TOKEN = 'token';
+    infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    infoSpy.mockRestore();
   });
 
   it('returns existing completion without reprocessing', async () => {
@@ -131,15 +152,14 @@ describe('worker runJob', () => {
   it('fails when transcript is missing from output', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateStudyGuideFromUploaded).mockResolvedValueOnce(
-      '===STUDY_GUIDE===Guide===TRANSCRIPT==='
-    );
+    vi.mocked(generateTranscriptFromUploaded).mockResolvedValueOnce('');
 
     const result = await runJob(jobId);
 
     expect(result.status).toBe('failed');
     const updated = await getJobRecord(jobId);
     expect(updated?.error?.code).toBe('transcript_missing');
+    expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith(['uploads/job/audio.mp3'], console);
   });
 
   it('logs the model id used for generation', async () => {
@@ -148,15 +168,13 @@ describe('worker runJob', () => {
       ...buildJob(jobId),
       request: {
         ...buildJob(jobId).request,
-        modelId: 'gemini-3-pro-preview'
+        modelId: 'gemini-3.1-pro-preview'
       }
     });
-    const infoSpy = vi.spyOn(console, 'info').mockImplementation(() => {});
 
     await runJob(jobId);
 
-    expect(infoSpy).toHaveBeenCalledWith('Worker model:', 'gemini-3-pro-preview');
-    infoSpy.mockRestore();
+    expect(infoSpy).toHaveBeenCalledWith('Worker model:', 'gemini-3.1-pro-preview');
   });
 
   it('requeues when Gemini is overloaded', async () => {

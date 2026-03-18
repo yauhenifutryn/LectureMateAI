@@ -40,6 +40,9 @@ type ActiveJobSummary = {
   modelId?: string;
   error?: { code?: string; message: string };
 };
+
+type AppErrorWithCode = Error & { code?: string };
+
 const App: React.FC = () => {
   const [status, setStatus] = useState<AppStatus>(AppStatus.IDLE);
   
@@ -48,7 +51,7 @@ const App: React.FC = () => {
   const [audioFile, setAudioFile] = useState<FileData | null>(null);
   const [slideFiles, setSlideFiles] = useState<FileData[]>([]);
   const [userContext, setUserContext] = useState('');
-  const [modelId, setModelId] = useState<'gemini-3-flash-preview' | 'gemini-3-pro-preview'>(
+  const [modelId, setModelId] = useState<'gemini-3-flash-preview' | 'gemini-3.1-pro-preview'>(
     'gemini-3-flash-preview'
   );
   const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
@@ -61,6 +64,7 @@ const App: React.FC = () => {
   const [processingLog, setProcessingLog] = useState<ProcessingLog | null>(null);
   const [processingModel, setProcessingModel] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [activeJob, setActiveJob] = useState<ActiveJobSummary | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [copiedTranscript, setCopiedTranscript] = useState(false);
@@ -77,6 +81,7 @@ const App: React.FC = () => {
     typeof window !== 'undefined' && window.location.pathname.startsWith('/admin');
   const audioRequired = slideFiles.length === 0;
   const isDemo = access?.mode === 'demo';
+  const isOperatorMode = access?.mode === 'admin';
 
   useEffect(() => {
     if (access || typeof window === 'undefined') return;
@@ -118,6 +123,14 @@ const App: React.FC = () => {
     return 'error';
   };
 
+  const formatUiError = (errorLike?: { code?: string; message?: string }) => {
+    if (!errorLike?.message) return null;
+    if (isOperatorMode && errorLike.code) {
+      return `[${errorLike.code}] ${errorLike.message}`;
+    }
+    return errorLike.message;
+  };
+
   const clearProcessingIndicators = () => {
     setProcessingLog(null);
     setProcessingModel(null);
@@ -126,7 +139,7 @@ const App: React.FC = () => {
   const applyStatusUpdate = (statusUpdate?: StatusUpdate) => {
     if (statusUpdate?.error?.message) {
       setProcessingLog({
-        message: statusUpdate.error.message,
+        message: formatUiError(statusUpdate.error) || statusUpdate.error.message,
         tone: toLogTone(statusUpdate.error.code)
       });
       return;
@@ -191,7 +204,7 @@ const App: React.FC = () => {
   }, [access?.mode, access?.token, isAdminRoute]);
 
   useEffect(() => {
-    if (access?.mode === 'demo' && modelId === 'gemini-3-pro-preview') {
+    if (access?.mode === 'demo' && modelId === 'gemini-3.1-pro-preview') {
       setModelId('gemini-3-flash-preview');
     }
   }, [access?.mode, modelId]);
@@ -255,7 +268,7 @@ const App: React.FC = () => {
       clearProcessingIndicators();
 
       const resolvedModelId =
-        isDemo && modelId === 'gemini-3-pro-preview' ? 'gemini-3-flash-preview' : modelId;
+        isDemo && modelId === 'gemini-3.1-pro-preview' ? 'gemini-3-flash-preview' : modelId;
 
       setStatus(AppStatus.UPLOADING);
       const slides = slideFiles.map(s => s.file);
@@ -279,12 +292,14 @@ const App: React.FC = () => {
       setStatus(AppStatus.COMPLETED);
       setPendingBlobUrls([]);
       setUploadCheckpoint(null);
+      setActiveJob(null);
       clearProcessingIndicators();
       setChatMessages([]);
       chatSessionRef.current = null; 
       void loadHistory();
     } catch (err: any) {
       console.error(err);
+      const code = typeof err?.code === 'string' ? err.code : undefined;
       const message = err.message || "An unexpected error occurred during analysis.";
       const lowerMessage = message.toLowerCase();
       if (lowerMessage.includes('access code') || lowerMessage.includes('demo code') || lowerMessage.includes('unauthorized')) {
@@ -296,7 +311,7 @@ const App: React.FC = () => {
         }
         return;
       }
-      setError(message);
+      setError(formatUiError({ code, message }) || message);
       setStatus(AppStatus.ERROR);
       setUploadCheckpoint(null);
       clearProcessingIndicators();
@@ -314,6 +329,7 @@ const App: React.FC = () => {
 
   const handleConfirmReset = () => {
     void cleanupPendingUploads(access);
+    setActiveJob(null);
     clearAudioFile();
     setSlideFiles([]);
     setResult(null);
@@ -330,6 +346,7 @@ const App: React.FC = () => {
   const handleLock = () => {
     void cleanupPendingUploads(access);
     setAccess(null);
+    setActiveJob(null);
     clearProcessingIndicators();
     setHistory([]);
     setHistoryError(null);
@@ -393,10 +410,13 @@ const App: React.FC = () => {
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
       setActiveTab('study_guide');
+      setActiveJob(null);
       clearProcessingIndicators();
+      void loadHistory();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to resume previous job.';
-      setError(message);
+      const appError = error as AppErrorWithCode;
+      const message = appError instanceof Error ? appError.message : 'Unable to resume previous job.';
+      setError(formatUiError({ code: appError.code, message }) || message);
       setStatus(AppStatus.ERROR);
       clearProcessingIndicators();
     }
@@ -415,15 +435,21 @@ const App: React.FC = () => {
         url += `&demoCode=${encodeURIComponent(access.token)}`;
       }
       const response = await fetch(url, { headers, cache: 'no-store' });
-      const data = (await response.json()) as { items?: HistoryItem[]; error?: { message?: string } };
+      const data = (await response.json()) as {
+        items?: HistoryItem[];
+        activeJob?: ActiveJobSummary | null;
+        error?: { message?: string };
+      };
       if (!response.ok) {
         throw new Error(data?.error?.message || 'Unable to load history.');
       }
       const items = (data.items || []) as HistoryItem[];
       setHistory(items);
+      setActiveJob(data.activeJob ?? null);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to load history.';
       setHistoryError(message);
+      setActiveJob(null);
     } finally {
       setHistoryLoading(false);
     }
@@ -705,10 +731,10 @@ const App: React.FC = () => {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setModelId('gemini-3-pro-preview')}
+                  onClick={() => setModelId('gemini-3.1-pro-preview')}
                   disabled={isDemo}
                   className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
-                    modelId === 'gemini-3-pro-preview'
+                    modelId === 'gemini-3.1-pro-preview'
                       ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
                       : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
                   } ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}
@@ -721,7 +747,7 @@ const App: React.FC = () => {
                       </span>
                     )}
                   </div>
-                  <div className="text-xs text-slate-500">Gemini 3 Pro Preview. Higher quality, slower.</div>
+                  <div className="text-xs text-slate-500">Gemini 3.1 Pro Preview. Higher quality, slower.</div>
                 </button>
               </div>
               {isDemo && (
@@ -754,10 +780,31 @@ const App: React.FC = () => {
                   <p className="text-sm text-slate-500">Loading previous outputs...</p>
                 ) : historyError ? (
                   <p className="text-sm text-red-600">{historyError}</p>
-                ) : history.length === 0 ? (
-                  <p className="text-sm text-slate-500">No previous outputs yet.</p>
                 ) : (
                   <div className="space-y-3">
+                    {activeJob && (
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border border-primary-200 bg-primary-50 rounded-lg px-4 py-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-primary-900">Processing in progress</div>
+                          <div className="text-xs text-primary-700">
+                            {formatStageMessage(activeJob.stage, activeJob.status)} Job {activeJob.jobId.slice(0, 8)}.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void handleResumeJob(activeJob);
+                          }}
+                          className="text-xs font-semibold text-primary-700 hover:text-primary-800"
+                        >
+                          Resume processing
+                        </button>
+                      </div>
+                    )}
+                    {history.length === 0 ? (
+                      <p className="text-sm text-slate-500">No previous outputs yet.</p>
+                    ) : (
+                      <div className="space-y-3">
                     {history.map((item) => (
                       <div
                         key={item.jobId}
@@ -792,6 +839,8 @@ const App: React.FC = () => {
                         </div>
                       </div>
                     ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

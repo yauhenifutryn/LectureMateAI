@@ -44,6 +44,8 @@ type ParsedResponse<T> = {
   text?: string;
 };
 
+type ErrorWithCode = Error & { code?: string };
+
 const parseResponse = async <T>(response: Response): Promise<ParsedResponse<T>> => {
   const contentType = response.headers.get('content-type') || '';
   if (contentType.includes('application/json')) {
@@ -75,6 +77,12 @@ const normalizeErrorMessage = (
   }
   if (response.statusText) return response.statusText;
   return fallback || 'Request failed.';
+};
+
+const createErrorWithCode = (message: string, code?: string): ErrorWithCode => {
+  const error = new Error(message) as ErrorWithCode;
+  if (code) error.code = code;
+  return error;
 };
 
 const getMimeType = (file: File) => {
@@ -220,6 +228,7 @@ const createJobRequest = async (
   if (!response.ok) {
     return {
       error: {
+        code: data?.error?.code,
         message: normalizeErrorMessage(response, data?.error, text, 'Processing failed.')
       }
     };
@@ -246,8 +255,9 @@ const startJobRequest = async (jobId: string, access?: AccessContext): Promise<v
 
   if (!response.ok) {
     const { json: data, text } = await parseResponse<JobStatusResponse>(response);
-    throw new Error(
-      normalizeErrorMessage(response, data?.error, text, 'Processing failed.')
+    throw createErrorWithCode(
+      normalizeErrorMessage(response, data?.error, text, 'Processing failed.'),
+      data?.error?.code
     );
   }
 };
@@ -271,6 +281,7 @@ const getJobStatusRequest = async (
   if (!response.ok) {
     return {
       error: {
+        code: data?.error?.code,
         message: normalizeErrorMessage(response, data?.error, text, 'Status failed.')
       }
     };
@@ -294,12 +305,15 @@ const fetchTranscriptText = async (transcriptUrl: string): Promise<string> => {
   return response.text();
 };
 
+const getFailureCleanupObjects = (objects: string[]): string[] =>
+  objects.filter((objectName) => !objectName.toLowerCase().endsWith('.pdf'));
+
 const buildAnalysisFromStatus = async (
   status: JobStatusResponse,
   fetchResult: (resultUrl: string) => Promise<string>
 ): Promise<AnalysisResult> => {
   if (status.error) {
-    throw new Error(status.error.message || 'Processing failed.');
+    throw createErrorWithCode(status.error.message || 'Processing failed.', status.error.code);
   }
 
   if (!status.resultUrl) {
@@ -497,7 +511,7 @@ export const createAnalyzeAudioLecture =
     );
 
     if (jobResponse.error) {
-      throw new Error(jobResponse.error.message || 'Processing failed.');
+      throw createErrorWithCode(jobResponse.error.message || 'Processing failed.', jobResponse.error.code);
     }
 
     if (!jobResponse.jobId) {
@@ -581,8 +595,9 @@ export const createRunAnalysisWithCleanup =
         }
       });
     } catch (error) {
-      if (uploadedObjects.length > 0) {
-        await cleanupFn(uploadedObjects, options?.access);
+      const cleanupTargets = getFailureCleanupObjects(uploadedObjects);
+      if (cleanupTargets.length > 0) {
+        await cleanupFn(cleanupTargets, options?.access);
       }
       throw error;
     }

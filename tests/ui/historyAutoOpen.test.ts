@@ -7,5 +7,7 @@ describe('history auto-open behavior', () => {
 
     expect(appSource).not.toContain('await handleResumeJob(data.activeJob)');
     expect(appSource).not.toContain('await handleOpenHistory(items[0])');
+    expect(appSource).toContain('setActiveJob(data.activeJob ?? null)');
+    expect(appSource).toContain('Resume processing');
   });
 });

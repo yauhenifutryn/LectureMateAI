@@ -47,7 +47,7 @@ export class GenerationRetryError extends Error {
   }
 }
 
-const MODEL_ALLOWLIST = new Set(['gemini-3-pro-preview', 'gemini-3-flash-preview']);
+const MODEL_ALLOWLIST = new Set(['gemini-3.1-pro-preview', 'gemini-3-flash-preview']);
 
 export function getModelId(override?: string): string {
   const candidate = override?.trim();

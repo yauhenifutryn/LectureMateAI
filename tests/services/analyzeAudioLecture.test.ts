@@ -204,10 +204,10 @@ describe('analyzeAudioLecture', () => {
     const fakeAudio = { name: 'audio.mp3', type: 'audio/mpeg' } as File;
 
     await analyze(fakeAudio, [], 'context', {
-      modelId: 'gemini-3-pro-preview'
+      modelId: 'gemini-3.1-pro-preview'
     });
 
     expect(payloads).toHaveLength(1);
-    expect(payloads[0].modelId).toBe('gemini-3-pro-preview');
+    expect(payloads[0].modelId).toBe('gemini-3.1-pro-preview');
   });
 });

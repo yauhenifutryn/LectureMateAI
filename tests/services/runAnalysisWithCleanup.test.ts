@@ -36,7 +36,7 @@ describe('runAnalysisWithCleanup', () => {
     expect(cleanup).not.toHaveBeenCalled();
   });
 
-  it('cleans uploads after failure', async () => {
+  it('cleans only audio uploads after failure', async () => {
     const cleanup = vi.fn().mockResolvedValue(undefined);
     const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
     const startJob = vi.fn().mockResolvedValue(undefined);
@@ -57,9 +57,37 @@ describe('runAnalysisWithCleanup', () => {
     });
 
     const audio = { name: 'audio.mp3', type: 'audio/mpeg' } as File;
+    const slide = { name: 'slide.pdf', type: 'application/pdf' } as File;
 
-    await expect(run(audio, [], 'context')).rejects.toThrow('fail');
+    await expect(run(audio, [slide], 'context')).rejects.toThrow('fail');
 
     expect(cleanup).toHaveBeenCalledWith(['uploads/job-1/audio.mp3'], undefined);
+  });
+
+  it('preserves slide uploads after failure when no audio was provided', async () => {
+    const cleanup = vi.fn().mockResolvedValue(undefined);
+    const createJob = vi.fn().mockResolvedValue({ jobId: 'job-1' });
+    const startJob = vi.fn().mockResolvedValue(undefined);
+    const getJobStatus = vi.fn().mockResolvedValue({
+      status: 'failed',
+      error: { message: 'fail' }
+    });
+    const fetchResultText = vi.fn();
+
+    const run = createRunAnalysisWithCleanup({
+      uploadToBlob: fakeUpload,
+      createJob,
+      startJob,
+      getJobStatus,
+      fetchResultText,
+      cleanupUploadedFiles: cleanup,
+      sleep: async () => {}
+    });
+
+    const slide = { name: 'slide.pdf', type: 'application/pdf' } as File;
+
+    await expect(run(null, [slide], 'context')).rejects.toThrow('fail');
+
+    expect(cleanup).not.toHaveBeenCalled();
   });
 });
