@@ -39,7 +39,7 @@
 | `GCS_RESULT_URL_TTL_SECONDS` | Optional | App, Worker | Defaults to 86400 seconds. |
 | `JOB_TTL_SECONDS` | Optional | App, Worker | Defaults to 86400 seconds. |
 | `PROCESSING_STALE_MS` | Optional | App | Default is disabled. |
-| `WORKER_DISPATCH_TIMEOUT_MS` | Optional | App | Defaults to 5000 ms. |
+| `WORKER_DISPATCH_TIMEOUT_MS` | Optional | App | Defaults to 900000 ms (15 minutes). |
 | `WORKER_POLL_TIMEOUT_MS` | Optional | Worker | Defaults to 15 minutes. |
 | `GEMINI_OVERLOAD_MAX_ATTEMPTS` | Optional | Worker | Overload retry tuning. |
 | `GEMINI_OVERLOAD_BASE_DELAY_MS` | Optional | Worker | Overload retry tuning. |

@@ -1,4 +1,4 @@
-const DEFAULT_DISPATCH_TIMEOUT_MS = 5000;
+const DEFAULT_DISPATCH_TIMEOUT_MS = 15 * 60 * 1000;
 
 export function getDispatchTimeoutMs(): number {
   const raw = Number(process.env.WORKER_DISPATCH_TIMEOUT_MS ?? DEFAULT_DISPATCH_TIMEOUT_MS);
