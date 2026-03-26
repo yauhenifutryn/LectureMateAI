@@ -132,6 +132,61 @@ describe('process handler', () => {
     expect(call?.request?.modelId).toBe('gemini-3.1-pro-preview');
   });
 
+  it('defaults transcription mode to Gemini', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+        slides: [],
+        userContext: 'ctx'
+      }
+    } as any;
+
+    const res = buildRes();
+    await handler(req, res);
+
+    const call = vi.mocked(setJobRecord).mock.calls[0]?.[0] as any;
+    expect(call?.request?.transcriptionMode).toBe('gemini');
+  });
+
+  it('stores enterprise STT only for admin job requests', async () => {
+    vi.mocked(authorizeProcess).mockResolvedValueOnce({ mode: 'admin', code: 'ADMIN' } as any);
+
+    const req = {
+      method: 'POST',
+      body: {
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+        slides: [],
+        userContext: 'ctx',
+        transcriptionMode: 'enterprise_stt'
+      }
+    } as any;
+
+    const res = buildRes();
+    await handler(req, res);
+
+    const call = vi.mocked(setJobRecord).mock.calls[0]?.[0] as any;
+    expect(call?.request?.transcriptionMode).toBe('enterprise_stt');
+  });
+
+  it('coerces enterprise STT to Gemini for demo job requests', async () => {
+    const req = {
+      method: 'POST',
+      body: {
+        audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
+        slides: [],
+        userContext: 'ctx',
+        transcriptionMode: 'enterprise_stt'
+      }
+    } as any;
+
+    const res = buildRes();
+    await handler(req, res);
+
+    const call = vi.mocked(setJobRecord).mock.calls[0]?.[0] as any;
+    expect(call?.request?.transcriptionMode).toBe('gemini');
+  });
+
   it('downgrades Gemini 3.1 Pro Preview to Flash for demo job requests', async () => {
     const req = {
       method: 'POST',

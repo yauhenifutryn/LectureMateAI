@@ -38,6 +38,8 @@ export interface ChatSession {
 
 export type AccessMode = 'admin' | 'demo';
 
+export type TranscriptionMode = 'gemini' | 'enterprise_stt';
+
 export type AccessContext = {
   mode: AccessMode;
   token: string;

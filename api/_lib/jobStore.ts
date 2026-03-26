@@ -23,6 +23,8 @@ export type UploadedFileRef = {
   displayName: string;
 };
 
+export type TranscriptionMode = 'gemini' | 'enterprise_stt';
+
 export type JobRecord = {
   id: string;
   status: JobStatus;
@@ -32,6 +34,7 @@ export type JobRecord = {
     slides: FilePayload[];
     userContext?: string;
     modelId?: string;
+    transcriptionMode?: TranscriptionMode;
   };
   access: JobAccess;
   createdAt: string;

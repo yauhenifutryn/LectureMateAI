@@ -90,7 +90,8 @@ const buildJob = (jobId: string) => ({
   request: {
     audio: { objectName: 'uploads/job/audio.mp3', mimeType: 'audio/mpeg' },
     slides: [{ objectName: 'uploads/job/slide.pdf', mimeType: 'application/pdf' }],
-    userContext: 'ctx'
+    userContext: 'ctx',
+    transcriptionMode: 'gemini' as const
   },
   access: {
     mode: 'demo' as const,
@@ -174,10 +175,40 @@ describe('worker runJob', () => {
     expect(updated?.status).toBe('completed');
   });
 
+  it('uses Gemini transcript generation by default', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('completed');
+    expect(vi.mocked(generateTranscriptFromUploaded)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(generateTranscriptFromSpeech)).not.toHaveBeenCalled();
+    expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith('Gemini fallback transcript', jobId);
+  });
+
+  it('uses Speech-to-Text only when enterprise STT is explicitly requested', async () => {
+    const jobId = buildJobId();
+    await setJobRecord({
+      ...buildJob(jobId),
+      request: {
+        ...buildJob(jobId).request,
+        transcriptionMode: 'enterprise_stt'
+      }
+    });
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('completed');
+    expect(vi.mocked(generateTranscriptFromSpeech)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(generateTranscriptFromUploaded)).not.toHaveBeenCalled();
+    expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith('Transcript', jobId);
+  });
+
   it('requeues when transcript generation returns empty output', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromSpeech).mockResolvedValue('');
+    vi.mocked(generateTranscriptFromUploaded).mockResolvedValue('');
 
     const result = await runJob(jobId);
 
@@ -190,7 +221,7 @@ describe('worker runJob', () => {
   it('requeues when transcript generation rejects with an empty transcript response error', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromSpeech).mockRejectedValue(
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValue(
       new Error('Received empty transcript response.')
     );
 
@@ -204,7 +235,7 @@ describe('worker runJob', () => {
   it('retries transcript generation locally before failing the job', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromSpeech)
+    vi.mocked(generateTranscriptFromUploaded)
       .mockRejectedValueOnce(new Error('Received empty transcript response.'))
       .mockResolvedValueOnce('')
       .mockResolvedValueOnce('Recovered transcript');
@@ -212,7 +243,7 @@ describe('worker runJob', () => {
     const result = await runJob(jobId);
 
     expect(result.status).toBe('completed');
-    expect(vi.mocked(generateTranscriptFromSpeech)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(generateTranscriptFromUploaded)).toHaveBeenCalledTimes(3);
     expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith('Recovered transcript', jobId);
   });
 
@@ -291,7 +322,7 @@ describe('worker runJob', () => {
   it('falls back to study-guide-only completion after repeated empty transcript attempts', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromSpeech).mockRejectedValue(
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValue(
       new Error('Received empty transcript response.')
     );
 
@@ -315,7 +346,13 @@ describe('worker runJob', () => {
 
   it('falls back to Gemini transcript generation when Speech-to-Text returns a file recognition error', async () => {
     const jobId = buildJobId();
-    await setJobRecord(buildJob(jobId));
+    await setJobRecord({
+      ...buildJob(jobId),
+      request: {
+        ...buildJob(jobId).request,
+        transcriptionMode: 'enterprise_stt'
+      }
+    });
     vi.mocked(generateTranscriptFromSpeech).mockRejectedValue(
       new Error('Speech-to-Text recognition failed: unsupported audio encoding')
     );

@@ -16,6 +16,7 @@ import { recordJobHistory } from '../api/_lib/jobHistory.js';
 import { storeResultMarkdown, storeTranscriptText } from '../api/_lib/resultStorage.js';
 import { clearActiveJobId, getJobRecord, updateJobRecord } from '../api/_lib/jobStore.js';
 import { getMaxUploadBytes, getObjectSizeBytes } from '../api/_lib/gcs.js';
+import type { TranscriptionMode } from '../api/_lib/jobStore.js';
 
 type WorkerResult = {
   jobId: string;
@@ -115,6 +116,9 @@ const isSpeechTranscriptFallbackError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   return message.includes('speech-to-text');
 };
+
+const getTranscriptionMode = (mode?: string): TranscriptionMode =>
+  mode === 'enterprise_stt' ? 'enterprise_stt' : 'gemini';
 
 export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
   const job = await getJobRecord(jobId);
@@ -248,17 +252,31 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
 
     let transcriptText: string | null = null;
     let transcriptOutputText: string | null = null;
+    const transcriptionMode = getTranscriptionMode(job.request.transcriptionMode);
     if (job.request.audio) {
+      const generateGeminiTranscript = async () =>
+        generateTranscriptFromUploaded(
+          apiKey,
+          {
+            audio: job.request.audio,
+            modelId: job.request.modelId
+          },
+          uploaded
+        );
+      const generatePrimaryTranscript = async () =>
+        transcriptionMode === 'enterprise_stt'
+          ? generateTranscriptFromSpeech(job.request.audio)
+          : generateGeminiTranscript();
+
       try {
         let lastTranscriptError: unknown;
         for (let transcriptAttempt = 1; transcriptAttempt <= TRANSCRIPT_LOCAL_RETRY_ATTEMPTS; transcriptAttempt += 1) {
           try {
-            transcriptText = await generateTranscriptFromSpeech(
-              job.request.audio
-            );
+            transcriptText = await generatePrimaryTranscript();
             if (!transcriptText || transcriptText.trim().length === 0) {
               throw new GenerationRetryError('Received empty transcript response.');
             }
+            transcriptText = transcriptText.trim();
             lastTranscriptError = undefined;
             break;
           } catch (error) {
@@ -281,16 +299,9 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         transcriptOutputText = transcriptText;
       } catch (error) {
         let handledTranscriptFailure = false;
-        if (isSpeechTranscriptFallbackError(error)) {
+        if (transcriptionMode === 'enterprise_stt' && isSpeechTranscriptFallbackError(error)) {
           try {
-            transcriptText = await generateTranscriptFromUploaded(
-              apiKey,
-              {
-                audio: job.request.audio,
-                modelId: job.request.modelId
-              },
-              uploaded
-            );
+            transcriptText = await generateGeminiTranscript();
             if (transcriptText && transcriptText.trim().length > 0) {
               transcriptOutputText = transcriptText.trim();
               transcriptText = transcriptText.trim();

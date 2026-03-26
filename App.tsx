@@ -1,5 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AppStatus, FileData, AnalysisResult, ChatMessage, ChatSession, AccessContext, HistoryItem } from './types';
+import {
+  AppStatus,
+  FileData,
+  AnalysisResult,
+  ChatMessage,
+  ChatSession,
+  AccessContext,
+  HistoryItem,
+  TranscriptionMode
+} from './types';
 import {
   analyzeAudioLectureWithCleanup,
   cleanupUploadedFiles,
@@ -54,6 +63,7 @@ const App: React.FC = () => {
   const [modelId, setModelId] = useState<'gemini-3-flash-preview' | 'gemini-3.1-pro-preview'>(
     'gemini-3-flash-preview'
   );
+  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('gemini');
   const [pendingBlobUrls, setPendingBlobUrls] = useState<string[]>([]);
   const [uploadCheckpoint, setUploadCheckpoint] = useState<string | null>(null);
   
@@ -209,6 +219,12 @@ const App: React.FC = () => {
     }
   }, [access?.mode, modelId]);
 
+  useEffect(() => {
+    if (access?.mode !== 'admin' && transcriptionMode !== 'gemini') {
+      setTranscriptionMode('gemini');
+    }
+  }, [access?.mode, transcriptionMode]);
+
   const handleAudioSelect = (files: FileData[]) => {
     if (files.length > 0) {
       setAudioFile(files[0]);
@@ -286,7 +302,8 @@ const App: React.FC = () => {
           applyStatusUpdate(statusUpdate);
         },
         access: access || undefined,
-        modelId: resolvedModelId
+        modelId: resolvedModelId,
+        transcriptionMode
       });
       setResult(analysis);
       setStatus(AppStatus.COMPLETED);
@@ -753,6 +770,52 @@ const App: React.FC = () => {
               {isDemo && (
                 <p className="text-xs text-slate-500 mt-3">
                   Pro model is reserved for admin accounts. Demo sessions run on Gemini 3 Flash Preview.
+                </p>
+              )}
+            </div>
+
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 md:col-span-2">
+              <h3 className="font-semibold text-slate-800 flex items-center gap-2 mb-4 text-base">
+                <Icons.FileAudio size={20} className="text-primary-600" />
+                Transcript Engine <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Manual</span>
+              </h3>
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="button"
+                  onClick={() => setTranscriptionMode('gemini')}
+                  className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
+                    transcriptionMode === 'gemini'
+                      ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Standard Transcript</div>
+                  <div className="text-xs text-slate-500">Gemini transcription. Lower cost, default path.</div>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTranscriptionMode('enterprise_stt')}
+                  disabled={isDemo}
+                  className={`flex-1 px-4 py-3 rounded-xl border text-left transition-all ${
+                    transcriptionMode === 'enterprise_stt'
+                      ? 'border-primary-500 bg-primary-50 text-primary-800 shadow-sm'
+                      : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300'
+                  } ${isDemo ? 'opacity-50 cursor-not-allowed' : ''}`}
+                >
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    Enterprise STT (Google Cloud Speech-to-Text V2, Chirp 3)
+                    {isDemo && (
+                      <span className="text-[10px] uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                        Admin Only
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">Higher transcript cost. Uses STT first, then Gemini fallback if needed.</div>
+                </button>
+              </div>
+              {isDemo && (
+                <p className="text-xs text-slate-500 mt-3">
+                  Enterprise STT is reserved for admin accounts. Demo sessions use Standard Transcript.
                 </p>
               )}
             </div>

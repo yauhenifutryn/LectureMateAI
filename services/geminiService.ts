@@ -1,4 +1,4 @@
-import type { AccessContext, ChatMessage, ChatSession, AnalysisResult } from '../types';
+import type { AccessContext, ChatMessage, ChatSession, AnalysisResult, TranscriptionMode } from '../types';
 
 type UploadedFile = {
   objectName: string;
@@ -170,12 +170,19 @@ type AnalyzeOptions = {
   onStatusUpdate?: (status: JobStatusResponse) => void;
   access?: AccessContext;
   modelId?: string;
+  transcriptionMode?: TranscriptionMode;
 };
 
 type AnalyzeDependencies = {
   uploadToBlob: (file: File, context: UploadContext) => Promise<UploadedFile>;
   createJob: (
-    payload: { audio?: UploadedFile; slides: UploadedFile[]; userContext: string; modelId?: string },
+    payload: {
+      audio?: UploadedFile;
+      slides: UploadedFile[];
+      userContext: string;
+      modelId?: string;
+      transcriptionMode?: TranscriptionMode;
+    },
     access?: AccessContext
   ) => Promise<JobCreateResponse>;
   startJob: (jobId: string, access?: AccessContext) => Promise<void>;
@@ -202,6 +209,7 @@ const createJobRequest = async (
     slides: UploadedFile[];
     userContext: string;
     modelId?: string;
+    transcriptionMode?: TranscriptionMode;
   },
   access?: AccessContext
 ): Promise<JobCreateResponse> => {
@@ -211,6 +219,7 @@ const createJobRequest = async (
     slides: UploadedFile[];
     userContext: string;
     modelId?: string;
+    transcriptionMode?: TranscriptionMode;
     demoCode?: string;
   };
 
@@ -510,7 +519,8 @@ export const createAnalyzeAudioLecture =
         audio,
         slides,
         userContext,
-        modelId: options?.modelId
+        modelId: options?.modelId,
+        transcriptionMode: options?.transcriptionMode
       },
       options?.access
     );

@@ -6,6 +6,7 @@ import { authorizeJobAccess } from '../_lib/jobAccess.js';
 import { toPublicError } from '../_lib/errors.js';
 import {
   buildJobId,
+  type TranscriptionMode,
   setActiveJobId,
   getJobRecord,
   setJobRecord,
@@ -33,6 +34,7 @@ type ProcessBody = {
   slides?: FilePayload[];
   userContext?: string;
   modelId?: string;
+  transcriptionMode?: string;
   demoCode?: string;
 };
 
@@ -90,8 +92,18 @@ function getProcessingStaleMs(): number {
   return raw;
 }
 
+function resolveTranscriptionMode(
+  requestedMode: string | undefined,
+  accessMode: 'admin' | 'demo'
+): TranscriptionMode {
+  if (accessMode === 'admin' && requestedMode === 'enterprise_stt') {
+    return 'enterprise_stt';
+  }
+  return 'gemini';
+}
+
 async function handleCreate(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
-  const { audio, slides = [], userContext, demoCode, modelId } = body;
+  const { audio, slides = [], userContext, demoCode, modelId, transcriptionMode } = body;
 
   try {
     const access = await authorizeProcess(req, demoCode);
@@ -115,6 +127,7 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
     if (access.mode === 'demo' && resolvedModelId === 'gemini-3.1-pro-preview') {
       resolvedModelId = 'gemini-3-flash-preview';
     }
+    const resolvedTranscriptionMode = resolveTranscriptionMode(transcriptionMode, access.mode);
 
     await setJobRecord({
       id: jobId,
@@ -124,7 +137,8 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
         audio: audio?.objectName && audio?.mimeType ? audio : undefined,
         slides,
         userContext,
-        modelId: resolvedModelId
+        modelId: resolvedModelId,
+        transcriptionMode: resolvedTranscriptionMode
       },
       access: {
         mode: access.mode,
