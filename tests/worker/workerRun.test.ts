@@ -219,4 +219,29 @@ describe('worker runJob', () => {
     const updated = await getJobRecord(jobId);
     expect(updated?.stage).toBe('generating');
   });
+
+  it('falls back to study-guide-only completion after repeated empty transcript attempts', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValueOnce(
+      new Error('Received empty transcript response.')
+    );
+
+    const result = await runJob(jobId, {
+      taskName: 'job-task-1',
+      retryCount: 2,
+      attemptCount: 3
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.resultUrl).toBe('https://gcs/results.md');
+    expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalled();
+    expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith(
+      expect.stringContaining('Transcript unavailable'),
+      jobId
+    );
+    const updated = await getJobRecord(jobId);
+    expect(updated?.status).toBe('completed');
+    expect(updated?.transcriptUrl).toBe('https://gcs/transcript.md');
+  });
 });

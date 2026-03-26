@@ -51,6 +51,10 @@ const buildPreview = (text: string, maxChars = 2000): string => {
   return text.slice(0, maxChars).trim();
 };
 
+const TRANSCRIPT_FALLBACK_ATTEMPTS = 3;
+const TRANSCRIPT_UNAVAILABLE_PLACEHOLDER =
+  '(Transcript unavailable after repeated empty responses from Gemini. Study guide generated without transcript.)';
+
 const isTransientUpstreamError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (!message) return false;
@@ -77,6 +81,15 @@ const stripResponseSections = (text: string): string => {
     output = output.slice(0, stopMatch.index).trim();
   }
   return output;
+};
+
+const shouldFallbackTranscript = (error: unknown, execution?: WorkerExecutionContext): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  const attemptCount = execution?.attemptCount ?? 1;
+  return (
+    attemptCount >= TRANSCRIPT_FALLBACK_ATTEMPTS &&
+    message.includes('empty transcript response')
+  );
 };
 
 export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
@@ -210,17 +223,33 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
     }
 
     let transcriptText: string | null = null;
+    let transcriptOutputText: string | null = null;
     if (job.request.audio) {
-      transcriptText = await generateTranscriptFromUploaded(
-        apiKey,
-        {
-          audio: job.request.audio,
-          modelId: job.request.modelId
-        },
-        uploaded
-      );
-      if (!transcriptText || transcriptText.trim().length === 0) {
-        throw new GenerationRetryError('Received empty transcript response.');
+      try {
+        transcriptText = await generateTranscriptFromUploaded(
+          apiKey,
+          {
+            audio: job.request.audio,
+            modelId: job.request.modelId
+          },
+          uploaded
+        );
+        if (!transcriptText || transcriptText.trim().length === 0) {
+          throw new GenerationRetryError('Received empty transcript response.');
+        }
+        transcriptOutputText = transcriptText;
+      } catch (error) {
+        if (!shouldFallbackTranscript(error, execution)) {
+          throw error;
+        }
+        transcriptText = null;
+        transcriptOutputText = TRANSCRIPT_UNAVAILABLE_PLACEHOLDER;
+        console.warn('Transcript fallback activated:', {
+          jobId,
+          taskName: execution?.taskName,
+          retryCount: execution?.retryCount,
+          attemptCount: execution?.attemptCount
+        });
       }
     }
 
@@ -237,8 +266,8 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
     );
     const cleanStudyGuideText = stripResponseSections(resultText) || resultText.trim();
     const resultUrl = await storeResultMarkdown(cleanStudyGuideText, jobId);
-    const transcriptUrl = transcriptText
-      ? await storeTranscriptText(transcriptText, jobId)
+    const transcriptUrl = transcriptOutputText
+      ? await storeTranscriptText(transcriptOutputText, jobId)
       : null;
 
     const completed = await updateJobRecord(jobId, {
