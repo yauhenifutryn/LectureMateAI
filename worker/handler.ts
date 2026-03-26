@@ -5,6 +5,7 @@ import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
+  generateTranscriptFromUploaded,
   cleanupGeminiFiles,
   getModelId
 } from '../api/_lib/gemini.js';
@@ -108,6 +109,11 @@ const shouldFallbackTranscript = (error: unknown, execution?: WorkerExecutionCon
 const isEmptyTranscriptError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   return message.includes('empty transcript response');
+};
+
+const isSpeechRecognitionLimitError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('speech-to-text recognition failed');
 };
 
 export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
@@ -274,17 +280,41 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         }
         transcriptOutputText = transcriptText;
       } catch (error) {
-        if (!shouldFallbackTranscript(error, execution)) {
-          throw error;
+        let handledTranscriptFailure = false;
+        if (isSpeechRecognitionLimitError(error)) {
+          transcriptText = await generateTranscriptFromUploaded(
+            apiKey,
+            {
+              audio: job.request.audio,
+              modelId: job.request.modelId
+            },
+            uploaded
+          );
+          if (transcriptText && transcriptText.trim().length > 0) {
+            transcriptOutputText = transcriptText;
+            console.warn('Transcript fallback activated via Gemini transcript generation:', {
+              jobId,
+              taskName: execution?.taskName,
+              retryCount: execution?.retryCount,
+              attemptCount: execution?.attemptCount
+            });
+            transcriptText = transcriptText.trim();
+            handledTranscriptFailure = true;
+          }
         }
-        transcriptText = null;
-        transcriptOutputText = TRANSCRIPT_UNAVAILABLE_PLACEHOLDER;
-        console.warn('Transcript fallback activated:', {
-          jobId,
-          taskName: execution?.taskName,
-          retryCount: execution?.retryCount,
-          attemptCount: execution?.attemptCount
-        });
+        if (!handledTranscriptFailure) {
+          if (!shouldFallbackTranscript(error, execution)) {
+            throw error;
+          }
+          transcriptText = null;
+          transcriptOutputText = TRANSCRIPT_UNAVAILABLE_PLACEHOLDER;
+          console.warn('Transcript fallback activated:', {
+            jobId,
+            taskName: execution?.taskName,
+            retryCount: execution?.retryCount,
+            attemptCount: execution?.attemptCount
+          });
+        }
       }
     }
 

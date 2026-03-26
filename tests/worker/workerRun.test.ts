@@ -4,6 +4,7 @@ import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
+  generateTranscriptFromUploaded,
   OverloadRetryError
 } from '../../api/_lib/gemini';
 import { generateTranscriptFromSpeech } from '../../api/_lib/speechTranscript';
@@ -46,6 +47,7 @@ vi.mock('../../api/_lib/gemini', () => ({
   generateStudyGuideFromUploaded: vi.fn(
     async () => '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
   ),
+  generateTranscriptFromUploaded: vi.fn(async () => 'Gemini fallback transcript'),
   cleanupGeminiFiles: vi.fn(async () => {}),
   OverloadRetryError: class OverloadRetryError extends Error {
     code = 'overload_retry';
@@ -130,6 +132,8 @@ describe('worker runJob', () => {
     vi.mocked(generateStudyGuideFromUploaded).mockResolvedValue(
       '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
     );
+    vi.mocked(generateTranscriptFromUploaded).mockReset();
+    vi.mocked(generateTranscriptFromUploaded).mockResolvedValue('Gemini fallback transcript');
     vi.mocked(storeResultMarkdown).mockClear();
     vi.mocked(storeTranscriptText).mockClear();
     vi.mocked(cleanupBlobUrls).mockClear();
@@ -309,7 +313,7 @@ describe('worker runJob', () => {
     expect(updated?.transcriptUrl).toBe('https://gcs/transcript.md');
   });
 
-  it('falls back to study-guide-only completion when Speech-to-Text returns a file recognition error', async () => {
+  it('falls back to Gemini transcript generation when Speech-to-Text returns a file recognition error', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
     vi.mocked(generateTranscriptFromSpeech).mockRejectedValue(
@@ -324,9 +328,17 @@ describe('worker runJob', () => {
 
     expect(result.status).toBe('completed');
     expect(result.resultUrl).toBe('https://gcs/results.md');
+    expect(vi.mocked(generateTranscriptFromUploaded)).toHaveBeenCalled();
     expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalled();
+    expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalledWith(
+      'test-key',
+      expect.objectContaining({
+        transcriptText: 'Gemini fallback transcript'
+      }),
+      expect.any(Array)
+    );
     expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith(
-      expect.stringContaining('Speech-to-Text'),
+      'Gemini fallback transcript',
       jobId
     );
     const updated = await getJobRecord(jobId);
