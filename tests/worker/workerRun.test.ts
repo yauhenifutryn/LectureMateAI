@@ -202,4 +202,21 @@ describe('worker runJob', () => {
     const updated = await getJobRecord(jobId);
     expect(updated?.error?.code).toBe('upstream_retry');
   });
+
+  it('reports the latest stage when an unexpected error occurs after generation starts', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateStudyGuideFromUploaded).mockRejectedValueOnce(new Error('boom'));
+
+    const result = await runJob(jobId, {
+      taskName: 'job-task-1',
+      retryCount: 0,
+      attemptCount: 1
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.stage).toBe('generating');
+    const updated = await getJobRecord(jobId);
+    expect(updated?.stage).toBe('generating');
+  });
 });

@@ -326,10 +326,22 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         error: queued.error
       };
     }
+    const latestJob = await getJobRecord(jobId).catch(() => null);
+    const failureStage = latestJob?.stage ?? job.stage;
+    const failureProgress = latestJob?.progress ?? job.progress;
+    console.error('Worker job failed:', {
+      jobId,
+      stage: failureStage,
+      progress: failureProgress,
+      taskName: execution?.taskName,
+      retryCount: execution?.retryCount,
+      attemptCount: execution?.attemptCount,
+      error
+    });
     const publicError = toPublicError(error);
     const failed = await updateJobRecord(jobId, {
       status: 'failed',
-      stage: job.stage,
+      stage: failureStage,
       error: publicError
     });
     await clearActiveJobId(job.access, jobId).catch((clearError) => {
