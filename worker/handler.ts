@@ -73,6 +73,15 @@ const isTransientUpstreamError = (error: unknown): boolean => {
   ].some((fragment) => message.includes(fragment));
 };
 
+const isRetryableGenerationError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (!message) return false;
+  return [
+    'empty transcript response',
+    'empty response from gemini'
+  ].some((fragment) => message.includes(fragment));
+};
+
 const stripResponseSections = (text: string): string => {
   if (!text) return '';
   let output = text.replace(/^\s*===\s*STUDY_GUIDE\s*===/i, '').trim();
@@ -321,6 +330,25 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
       const retryError = {
         code: 'generation_retry',
         message: 'Gemini processing still pending. Retrying shortly.'
+      };
+      const queued = await updateJobRecord(jobId, {
+        status: 'queued',
+        stage: 'queued',
+        progress: 0,
+        error: retryError
+      });
+      return {
+        jobId,
+        status: queued.status,
+        stage: queued.stage,
+        progress: queued.progress,
+        error: queued.error
+      };
+    }
+    if (isRetryableGenerationError(error)) {
+      const retryError = {
+        code: 'generation_retry',
+        message: 'Gemini returned empty output. Retrying shortly.'
       };
       const queued = await updateJobRecord(jobId, {
         status: 'queued',

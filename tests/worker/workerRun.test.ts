@@ -162,6 +162,20 @@ describe('worker runJob', () => {
     expect(vi.mocked(cleanupBlobUrls)).not.toHaveBeenCalled();
   });
 
+  it('requeues when transcript generation rejects with an empty transcript response error', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValueOnce(
+      new Error('Received empty transcript response.')
+    );
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('queued');
+    const updated = await getJobRecord(jobId);
+    expect(updated?.error?.code).toBe('generation_retry');
+  });
+
   it('logs the model id used for generation', async () => {
     const jobId = buildJobId();
     await setJobRecord({
@@ -201,6 +215,20 @@ describe('worker runJob', () => {
     expect(result.status).toBe('queued');
     const updated = await getJobRecord(jobId);
     expect(updated?.error?.code).toBe('upstream_retry');
+  });
+
+  it('requeues when Gemini returns an empty study guide response', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateStudyGuideFromUploaded).mockRejectedValueOnce(
+      new Error('Received empty response from Gemini.')
+    );
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('queued');
+    const updated = await getJobRecord(jobId);
+    expect(updated?.error?.code).toBe('generation_retry');
   });
 
   it('reports the latest stage when an unexpected error occurs after generation starts', async () => {

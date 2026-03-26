@@ -548,6 +548,9 @@ export async function generateStudyGuideFromUploaded(
       throw new GenerationRetryError();
     }
     const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('empty response from gemini')) {
+      throw new GenerationRetryError('Received empty response from Gemini.');
+    }
     if (message.includes('empty transcript response')) {
       throw new GenerationRetryError('Received empty transcript response.');
     }
@@ -612,6 +615,10 @@ export async function generateTranscriptFromUploaded(
     }
     if (isTimeoutError(error)) {
       throw new GenerationRetryError();
+    }
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('empty transcript response')) {
+      throw new GenerationRetryError('Received empty transcript response.');
     }
     throw error;
   }
