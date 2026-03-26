@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { AccessContext, AccessMode } from '../types';
 import { Icons } from './Icon';
 import { resolveAccessMode } from '../utils/accessMode';
+import { buildAccessFieldState } from '../utils/accessField';
 
 type AccessGateProps = {
   onAuthorize: (access: AccessContext) => void;
@@ -22,6 +23,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
 }) => {
   const [mode, setMode] = useState<AccessMode>(defaultMode);
   const [value, setValue] = useState('');
+  const [isSecretVisible, setIsSecretVisible] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -81,8 +83,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
     }
   };
 
-  const label = mode === 'admin' ? 'Admin Password' : 'Access Code';
-  const placeholder = mode === 'admin' ? 'Enter admin password' : 'Enter demo code';
+  const fieldState = buildAccessFieldState(mode, isSecretVisible);
   const buttonLabel = mode === 'admin' ? 'Enter Control Room' : 'Unlock Access';
 
   return (
@@ -105,7 +106,10 @@ const AccessGate: React.FC<AccessGateProps> = ({
           <div className="grid grid-cols-2 gap-2 mb-6">
             <button
               type="button"
-              onClick={() => setMode('demo')}
+              onClick={() => {
+                setMode('demo');
+                setIsSecretVisible(false);
+              }}
               className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                 mode === 'demo'
                   ? 'bg-primary-600 text-white border-primary-600'
@@ -116,7 +120,10 @@ const AccessGate: React.FC<AccessGateProps> = ({
             </button>
             <button
               type="button"
-              onClick={() => setMode('admin')}
+              onClick={() => {
+                setMode('admin');
+                setIsSecretVisible(false);
+              }}
               className={`px-3 py-2 rounded-lg text-sm font-semibold border transition-colors ${
                 mode === 'admin'
                   ? 'bg-primary-600 text-white border-primary-600'
@@ -131,14 +138,27 @@ const AccessGate: React.FC<AccessGateProps> = ({
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <label className="text-xs font-semibold uppercase tracking-wide text-slate-500">
-              {label}
+              {fieldState.label}
             </label>
-            <input
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              placeholder={placeholder}
-              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
-            />
+            <div className="relative">
+              <input
+                type={fieldState.inputType}
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                placeholder={fieldState.placeholder}
+                autoComplete={mode === 'admin' ? 'current-password' : 'off'}
+                className="w-full rounded-lg border border-slate-200 px-3 py-2 pr-11 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              />
+              <button
+                type="button"
+                aria-label={fieldState.toggleLabel}
+                title={fieldState.toggleLabel}
+                onClick={() => setIsSecretVisible((current) => !current)}
+                className="absolute inset-y-0 right-0 flex items-center justify-center px-3 text-slate-400 transition-colors hover:text-slate-600"
+              >
+                {isSecretVisible ? <Icons.EyeOff size={16} /> : <Icons.Eye size={16} />}
+              </button>
+            </div>
           </div>
 
           {(error || localError) && (

@@ -17,7 +17,9 @@ import {
   LogOut,
   Play,
   Pause,
-  Sparkles
+  Sparkles,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 export const Icons = {
@@ -38,5 +40,7 @@ export const Icons = {
   LogOut,
   Play,
   Pause,
-  Sparkles
+  Sparkles,
+  Eye,
+  EyeOff
 };

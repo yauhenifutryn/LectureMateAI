@@ -379,7 +379,8 @@ const buildPromptText = (input: StudyInput): string =>
     userContext: input.userContext,
     hasAudio: Boolean(input.audio),
     hasSlides: (input.slides || []).length > 0,
-    hasRawNotes: false
+    hasRawNotes: false,
+    transcriptText: input.transcriptText
   });
 
 const buildTranscriptPromptText = (): string =>
