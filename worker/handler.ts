@@ -54,7 +54,7 @@ const buildPreview = (text: string, maxChars = 2000): string => {
 const TRANSCRIPT_FALLBACK_ATTEMPTS = 3;
 const TRANSCRIPT_LOCAL_RETRY_ATTEMPTS = 3;
 const TRANSCRIPT_UNAVAILABLE_PLACEHOLDER =
-  '(Transcript unavailable after repeated empty responses from Gemini. Study guide generated without transcript.)';
+  '(Transcript unavailable after repeated empty responses from Speech-to-Text. Study guide generated without transcript.)';
 
 const isTransientUpstreamError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';

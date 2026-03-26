@@ -20,6 +20,19 @@ type SpeechTranscriptDeps = {
   getLanguageCodes?: () => string[];
 };
 
+type SpeechTranscriptDiagnostics = {
+  audioUri: string;
+  configuredLanguageCodes: string[];
+  resultKeys: string[];
+  matchedResultKey?: string;
+  transcriptResultCount: number;
+  transcriptLength: number;
+  detectedLanguageCodes: string[];
+  hasInlineResult: boolean;
+  hasDeprecatedTranscript: boolean;
+  fileErrorMessage?: string;
+};
+
 const DEFAULT_LOCATION = 'us';
 const DEFAULT_LANGUAGE_CODES = ['auto'];
 const DEFAULT_MODEL = 'chirp_3';
@@ -57,18 +70,58 @@ const buildRecognizer = (projectId: string, location: string): string =>
 const buildGcsUri = (bucketName: string, objectName: string): string =>
   `gs://${bucketName}/${objectName.replace(/^\/+/, '')}`;
 
-const extractTranscriptText = (response: unknown, audioUri: string): string => {
+const extractTranscriptText = (
+  response: unknown,
+  audioUri: string,
+  configuredLanguageCodes: string[]
+): {
+  transcriptText: string;
+  diagnostics: SpeechTranscriptDiagnostics;
+} => {
   const resultMap = (response as { results?: Record<string, any> } | undefined)?.results;
-  const transcriptResults = resultMap?.[audioUri]?.transcript?.results;
-  if (!Array.isArray(transcriptResults)) {
-    return '';
-  }
+  const resultKeys = resultMap && typeof resultMap === 'object'
+    ? Object.keys(resultMap)
+    : [];
+  const matchedResultKey = resultMap?.[audioUri]
+    ? audioUri
+    : resultKeys.length === 1
+      ? resultKeys[0]
+      : undefined;
+  const fileResult = matchedResultKey ? resultMap?.[matchedResultKey] : undefined;
+  const transcriptContainer = fileResult?.inlineResult?.transcript ?? fileResult?.transcript;
+  const transcriptResults = Array.isArray(transcriptContainer?.results)
+    ? transcriptContainer.results
+    : [];
 
-  return transcriptResults
+  const transcriptText = transcriptResults
     .map((result) => result?.alternatives?.[0]?.transcript ?? '')
     .filter((chunk) => typeof chunk === 'string' && chunk.trim().length > 0)
     .join('\n')
     .trim();
+
+  return {
+    transcriptText,
+    diagnostics: {
+      audioUri,
+      configuredLanguageCodes,
+      resultKeys,
+      matchedResultKey,
+      transcriptResultCount: transcriptResults.length,
+      transcriptLength: transcriptText.length,
+      detectedLanguageCodes: Array.from(
+        new Set(
+          transcriptResults
+            .map((result) => result?.languageCode)
+            .filter((languageCode): languageCode is string => typeof languageCode === 'string' && languageCode.length > 0)
+        )
+      ),
+      hasInlineResult: Boolean(fileResult?.inlineResult),
+      hasDeprecatedTranscript: Boolean(fileResult?.transcript),
+      fileErrorMessage: typeof fileResult?.error?.message === 'string'
+        ? fileResult.error.message
+        : undefined
+    }
+  };
 };
 
 export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {}) {
@@ -90,6 +143,7 @@ export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {})
     }
 
     const location = getLocation();
+    const configuredLanguageCodes = getLanguageCodes();
     const audioUri = buildGcsUri(bucketName, audio.objectName);
     const client = clientFactory(location);
 
@@ -97,7 +151,7 @@ export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {})
       recognizer: buildRecognizer(projectId, location),
       config: {
         autoDecodingConfig: {},
-        languageCodes: getLanguageCodes(),
+        languageCodes: configuredLanguageCodes,
         model: DEFAULT_MODEL,
         features: {
           enableAutomaticPunctuation: true
@@ -115,11 +169,23 @@ export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {})
 
     const [operation] = await client.batchRecognize(request);
     const [response] = await operation.promise();
-    const transcriptText = extractTranscriptText(response, audioUri);
+    const { transcriptText, diagnostics } = extractTranscriptText(
+      response,
+      audioUri,
+      configuredLanguageCodes
+    );
+
+    if (diagnostics.fileErrorMessage) {
+      console.error('Speech-to-Text file recognition failed:', diagnostics);
+      throw new Error(`Speech-to-Text recognition failed: ${diagnostics.fileErrorMessage}`);
+    }
 
     if (!transcriptText) {
+      console.warn('Speech-to-Text returned empty transcript:', diagnostics);
       throw new GenerationRetryError('Received empty transcript response.');
     }
+
+    console.info('Speech-to-Text transcript generated:', diagnostics);
 
     return transcriptText;
   };
