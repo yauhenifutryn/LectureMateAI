@@ -11,6 +11,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@google-cloud/speech": "^7.3.0",
     "@google-cloud/storage": "^7.18.0",
     "@google-cloud/tasks": "^6.2.1",
     "@google/genai": "^1.35.0",

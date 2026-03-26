@@ -5,10 +5,10 @@ import {
   uploadGeminiFiles,
   checkGeminiFiles,
   generateStudyGuideFromUploaded,
-  generateTranscriptFromUploaded,
   cleanupGeminiFiles,
   getModelId
 } from '../api/_lib/gemini.js';
+import { generateTranscriptFromSpeech } from '../api/_lib/speechTranscript.js';
 import { cleanupBlobUrls } from '../api/_lib/blobCleanup.js';
 import { toPublicError } from '../api/_lib/errors.js';
 import { recordJobHistory } from '../api/_lib/jobHistory.js';
@@ -244,13 +244,8 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         let lastTranscriptError: unknown;
         for (let transcriptAttempt = 1; transcriptAttempt <= TRANSCRIPT_LOCAL_RETRY_ATTEMPTS; transcriptAttempt += 1) {
           try {
-            transcriptText = await generateTranscriptFromUploaded(
-              apiKey,
-              {
-                audio: job.request.audio,
-                modelId: job.request.modelId
-              },
-              uploaded
+            transcriptText = await generateTranscriptFromSpeech(
+              job.request.audio
             );
             if (!transcriptText || transcriptText.trim().length === 0) {
               throw new GenerationRetryError('Received empty transcript response.');

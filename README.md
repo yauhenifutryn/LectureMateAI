@@ -1,7 +1,9 @@
 # LectureMateAI
 
 ## Overview
-- LectureMateAI turns lecture audio and slide PDFs into a study guide and transcript using Gemini.
+- LectureMateAI turns lecture audio and slide PDFs into a study guide and transcript.
+- Cloud Speech-to-Text V2 with `chirp_3` now handles transcript generation from uploaded audio.
+- Gemini still handles study-guide generation from the transcript and slides.
 - The UI and API run in a single Cloud Run service.
 - A separate Cloud Run worker handles long running Gemini processing.
 - Google Cloud Storage stores uploads and results.
@@ -40,6 +42,9 @@
 | `WORKER_URL` | Optional local fallback | App | Direct worker base URL when Cloud Tasks is not configured. |
 | `WORKER_SHARED_SECRET` | Optional local fallback | App, Worker | Shared secret for local direct worker auth. |
 | `GEMINI_MODEL_ID` | Optional | App, Worker | Overrides default Gemini model. |
+| `SPEECH_TO_TEXT_PROJECT_ID` | Optional | Worker | Overrides the GCP project used for Speech-to-Text V2. Defaults to Cloud Run project envs. |
+| `SPEECH_TO_TEXT_LOCATION` | Optional | Worker | Speech-to-Text V2 region. Defaults to `us`. |
+| `TRANSCRIPT_LANGUAGE_CODES` | Optional | Worker | Comma-separated locale list for Chirp 3, or `auto`. Defaults to `auto`. |
 | `MAX_UPLOAD_BYTES` | Optional | App, Worker | Defaults to 512 MB. |
 | `GCS_UPLOAD_URL_TTL_SECONDS` | Optional | App, Worker | Defaults to 900 seconds. |
 | `GCS_RESULT_URL_TTL_SECONDS` | Optional | App, Worker | Defaults to 86400 seconds. |
@@ -65,11 +70,13 @@
 - App service uses `cloudrun/Dockerfile`.
 - Worker service uses `worker/Dockerfile`.
 - Enable the Cloud Tasks API and create a queue in the same region as Cloud Run.
+- Enable the Speech-to-Text API for the project.
 - The app service must have Cloud Tasks enqueue permissions and `iam.serviceAccountUser` on the worker task invoker service account.
 - The worker service should be deployed as private, not `--allow-unauthenticated`.
 - Cloud Tasks should invoke the worker with OIDC using `WORKER_TASK_SERVICE_ACCOUNT_EMAIL`.
 - `WORKER_URL` and `WORKER_SHARED_SECRET` are now local fallback only.
 - In Cloud Run, service account credentials grant GCS access.
+- Grant the worker runtime service account `roles/speech.client` so it can call Speech-to-Text V2 recognition endpoints.
 - For local GCS access, use `GOOGLE_APPLICATION_CREDENTIALS` or application default credentials.
 
 ## Access Control

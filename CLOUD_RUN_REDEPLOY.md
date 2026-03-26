@@ -79,7 +79,7 @@ gcloud run deploy lecturemate-worker \
   --project lecturemateai-485823 \
   --region us-central1 \
   --image "$WORKER_IMG" \
-  --allow-unauthenticated
+  --no-allow-unauthenticated
 ```
 
 ## Why The Script And Manual Commands Look Slightly Different
@@ -99,6 +99,24 @@ Cloud Run service environment variables remain attached to the service unless yo
 - `--remove-env-vars`
 
 This redeploy flow only updates the image. It does not wipe existing service env vars.
+
+## Speech-to-Text Setup
+
+The worker now uses Speech-to-Text V2 `chirp_3` for transcript generation.
+
+Before redeploying the worker in a new project:
+
+```bash
+gcloud services enable speech.googleapis.com
+```
+
+Grant the worker runtime service account Speech-to-Text access:
+
+```bash
+gcloud projects add-iam-policy-binding lecturemateai-485823 \
+  --member="serviceAccount:lecturemate-run-sa@lecturemateai-485823.iam.gserviceaccount.com" \
+  --role="roles/speech.client"
+```
 
 ## Safe To Commit
 
