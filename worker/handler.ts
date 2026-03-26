@@ -26,6 +26,13 @@ type WorkerResult = {
   error?: { code?: string; message: string };
 };
 
+type WorkerExecutionContext = {
+  taskName?: string;
+  queueName?: string;
+  retryCount?: number;
+  attemptCount?: number;
+};
+
 const POLL_INTERVAL_MS = 2000;
 const DEFAULT_POLL_TIMEOUT_MS = 15 * 60 * 1000;
 
@@ -44,6 +51,24 @@ const buildPreview = (text: string, maxChars = 2000): string => {
   return text.slice(0, maxChars).trim();
 };
 
+const isTransientUpstreamError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (!message) return false;
+  return [
+    'fetch failed',
+    'headers timeout',
+    'socket hang up',
+    'connection reset',
+    'econnreset',
+    'etimedout',
+    'timeout awaiting',
+    'temporarily unavailable',
+    'service unavailable',
+    '503',
+    '429'
+  ].some((fragment) => message.includes(fragment));
+};
+
 const stripResponseSections = (text: string): string => {
   if (!text) return '';
   let output = text.replace(/^\s*===\s*STUDY_GUIDE\s*===/i, '').trim();
@@ -54,7 +79,7 @@ const stripResponseSections = (text: string): string => {
   return output;
 };
 
-export async function runJob(jobId: string): Promise<WorkerResult> {
+export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
   const job = await getJobRecord(jobId);
   if (!job) {
     throw new Error('Job not found.');
@@ -175,6 +200,14 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
     });
 
     console.info('Worker model:', getModelId(job.request.modelId));
+    if (execution?.taskName) {
+      console.info('Worker execution:', {
+        jobId,
+        taskName: execution.taskName,
+        retryCount: execution.retryCount,
+        attemptCount: execution.attemptCount
+      });
+    }
 
     let transcriptText: string | null = null;
     if (job.request.audio) {
@@ -259,6 +292,25 @@ export async function runJob(jobId: string): Promise<WorkerResult> {
       const retryError = {
         code: 'generation_retry',
         message: 'Gemini processing still pending. Retrying shortly.'
+      };
+      const queued = await updateJobRecord(jobId, {
+        status: 'queued',
+        stage: 'queued',
+        progress: 0,
+        error: retryError
+      });
+      return {
+        jobId,
+        status: queued.status,
+        stage: queued.stage,
+        progress: queued.progress,
+        error: queued.error
+      };
+    }
+    if (isTransientUpstreamError(error)) {
+      const retryError = {
+        code: 'upstream_retry',
+        message: 'Transient upstream error. Retrying shortly.'
       };
       const queued = await updateJobRecord(jobId, {
         status: 'queued',

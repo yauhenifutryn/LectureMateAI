@@ -190,4 +190,16 @@ describe('worker runJob', () => {
     const updated = await getJobRecord(jobId);
     expect(updated?.error?.code).toBe('overloaded_retry');
   });
+
+  it('requeues on transient upstream failures', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateStudyGuideFromUploaded).mockRejectedValueOnce(new Error('fetch failed'));
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('queued');
+    const updated = await getJobRecord(jobId);
+    expect(updated?.error?.code).toBe('upstream_retry');
+  });
 });

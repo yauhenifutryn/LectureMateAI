@@ -23,6 +23,15 @@ vi.mock('../../api/_lib/blobCleanup', () => ({
   cleanupBlobUrls: vi.fn()
 }));
 
+vi.mock('../../api/_lib/rateLimit', () => ({
+  RateLimitError: class RateLimitError extends Error {
+    status = 429;
+    code = 'rate_limited';
+  },
+  enforceRateLimit: vi.fn(async () => {}),
+  getRateLimit: vi.fn(() => 10)
+}));
+
 
 import handler from '../../api/process';
 
@@ -58,7 +67,7 @@ describe('process job creation', () => {
 
     const payload = res.json.mock.calls[0][0] as { jobId: string };
     expect(payload.jobId).toBeTruthy();
-    expect(kvMock.set).toHaveBeenCalledTimes(1);
+    expect(kvMock.set).toHaveBeenCalledTimes(2);
     const [, stored] = kvMock.set.mock.calls[0];
     expect(stored.status).toBe('queued');
     expect(stored.request.audio.objectName).toBe('uploads/job/audio.mp3');

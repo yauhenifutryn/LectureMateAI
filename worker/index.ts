@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import http from 'http';
-import { runJob } from './handler.js';
+import { authorizeWorkerRequest, handleWorkerTask } from './taskController.js';
 import { toPublicError } from '../api/_lib/errors.js';
 
 const PORT = Number(process.env.PORT ?? 8080);
@@ -36,9 +36,8 @@ const handler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
     return;
   }
 
-  const secret = process.env.WORKER_SHARED_SECRET;
-  const authHeader = req.headers.authorization ?? '';
-  if (!secret || authHeader !== `Bearer ${secret}`) {
+  const auth = authorizeWorkerRequest(req.headers);
+  if (!auth.ok) {
     unauthorized(res);
     return;
   }
@@ -53,10 +52,15 @@ const handler = async (req: http.IncomingMessage, res: http.ServerResponse) => {
       return;
     }
 
-    const result = await runJob(parsed.jobId);
-    res.statusCode = 200;
+    const result = await handleWorkerTask(parsed.jobId, {
+      authMode: auth.mode,
+      taskName: auth.taskName ?? `job-${parsed.jobId}`,
+      queueName: auth.queueName,
+      retryCount: auth.retryCount
+    });
+    res.statusCode = result.statusCode;
     res.setHeader('Content-Type', 'application/json');
-    res.end(JSON.stringify(result));
+    res.end(JSON.stringify(result.payload));
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error.';
     const stack = error instanceof Error ? error.stack : undefined;

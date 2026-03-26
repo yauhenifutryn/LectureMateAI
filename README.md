@@ -9,7 +9,7 @@
 
 ## Architecture
 - App service: Serves the Vite `dist/` build and all `/api/*` routes.
-- Worker service: Receives `/worker/run` calls from the app service and executes the job.
+- Worker service: Receives `/worker/run` calls from Cloud Tasks and executes the job.
 - Storage: GCS for files, KV for state.
 
 ## Local Development
@@ -31,13 +31,20 @@
 | `UPSTASH_REDIS_REST_URL` | Optional | App, Worker | Alternative to `KV_REST_API_URL`. |
 | `UPSTASH_REDIS_REST_TOKEN` | Optional | App, Worker | Alternative to `KV_REST_API_TOKEN`. |
 | `UPSTASH_REDIS_REST_READ_ONLY_TOKEN` | Optional | App, Worker | Alternative read only token. |
-| `WORKER_URL` | Yes | App | Base URL for the worker service. |
-| `WORKER_SHARED_SECRET` | Yes | App, Worker | Shared secret for worker auth. |
+| `CLOUD_TASKS_PROJECT_ID` | Yes in production | App | GCP project that owns the task queue. |
+| `CLOUD_TASKS_LOCATION` | Yes in production | App | Cloud Tasks queue region, usually `us-central1`. |
+| `CLOUD_TASKS_QUEUE_ID` | Yes in production | App | Queue ID for worker dispatch, for example `lecturemate-worker-queue`. |
+| `WORKER_TASK_URL` | Yes in production | App | Private worker URL targeted by Cloud Tasks. |
+| `WORKER_TASK_SERVICE_ACCOUNT_EMAIL` | Yes in production | App | Service account email used for Cloud Tasks OIDC calls to the worker. |
+| `WORKER_TASK_AUDIENCE` | Optional | App | Explicit OIDC audience override for the worker URL. |
+| `WORKER_URL` | Optional local fallback | App | Direct worker base URL when Cloud Tasks is not configured. |
+| `WORKER_SHARED_SECRET` | Optional local fallback | App, Worker | Shared secret for local direct worker auth. |
 | `GEMINI_MODEL_ID` | Optional | App, Worker | Overrides default Gemini model. |
 | `MAX_UPLOAD_BYTES` | Optional | App, Worker | Defaults to 512 MB. |
 | `GCS_UPLOAD_URL_TTL_SECONDS` | Optional | App, Worker | Defaults to 900 seconds. |
 | `GCS_RESULT_URL_TTL_SECONDS` | Optional | App, Worker | Defaults to 86400 seconds. |
 | `JOB_TTL_SECONDS` | Optional | App, Worker | Defaults to 86400 seconds. |
+| `JOB_LEASE_TTL_SECONDS` | Optional | Worker | KV lease TTL for duplicate task suppression, defaults to 1860 seconds. |
 | `PROCESSING_STALE_MS` | Optional | App | Default is disabled. |
 | `WORKER_DISPATCH_TIMEOUT_MS` | Optional | App | Defaults to 900000 ms (15 minutes). |
 | `WORKER_POLL_TIMEOUT_MS` | Optional | Worker | Defaults to 15 minutes. |
@@ -57,8 +64,11 @@
 ## Cloud Run Deployment
 - App service uses `cloudrun/Dockerfile`.
 - Worker service uses `worker/Dockerfile`.
-- The app service must have `WORKER_URL` pointing at the worker service.
-- Both services must share the same `WORKER_SHARED_SECRET`.
+- Enable the Cloud Tasks API and create a queue in the same region as Cloud Run.
+- The app service must have Cloud Tasks enqueue permissions and `iam.serviceAccountUser` on the worker task invoker service account.
+- The worker service should be deployed as private, not `--allow-unauthenticated`.
+- Cloud Tasks should invoke the worker with OIDC using `WORKER_TASK_SERVICE_ACCOUNT_EMAIL`.
+- `WORKER_URL` and `WORKER_SHARED_SECRET` are now local fallback only.
 - In Cloud Run, service account credentials grant GCS access.
 - For local GCS access, use `GOOGLE_APPLICATION_CREDENTIALS` or application default credentials.
 

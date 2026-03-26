@@ -12,7 +12,7 @@ import {
   updateJobRecord
 } from '../_lib/jobStore.js';
 import { validateObjectName } from '../_lib/gcs.js';
-import { getDispatchTimeoutMs } from '../_lib/dispatchConfig.js';
+import { enqueueWorkerTask } from '../_lib/cloudTasks.js';
 import { getModelId } from '../_lib/gemini.js';
 import { createResultReadUrl, createTranscriptReadUrl } from '../_lib/resultStorage.js';
 import { RateLimitError, enforceRateLimit, getRateLimit } from '../_lib/rateLimit.js';
@@ -90,56 +90,6 @@ function getProcessingStaleMs(): number {
   return raw;
 }
 
-async function dispatchToWorker(
-  jobId: string
-): Promise<{ ok: boolean; status: number; error?: { code?: string; message: string } }> {
-  const workerUrl = process.env.WORKER_URL;
-  const workerSecret = process.env.WORKER_SHARED_SECRET;
-  if (!workerUrl || !workerSecret) {
-    throw new Error('Worker is not configured.');
-  }
-
-  const endpoint = workerUrl.replace(/\/$/, '') + '/worker/run';
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), getDispatchTimeoutMs());
-
-  try {
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${workerSecret}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ jobId }),
-      signal: controller.signal
-    });
-    let payload: { error?: { code?: string; message?: string } } | null = null;
-    try {
-      payload = (await response.json()) as { error?: { code?: string; message?: string } };
-    } catch {
-      payload = null;
-    }
-    if (!response.ok) {
-      const payloadError = payload?.error;
-      const normalizedError =
-        payloadError?.message !== undefined
-          ? { code: payloadError.code, message: payloadError.message }
-          : {
-              code: payloadError?.code ?? 'dispatch_failed',
-              message: `Worker dispatch failed (${response.status}).`
-            };
-      return {
-        ok: false,
-        status: response.status,
-        error: normalizedError
-      };
-    }
-    return { ok: true, status: response.status };
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
 async function handleCreate(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
   const { audio, slides = [], userContext, demoCode, modelId } = body;
 
@@ -200,45 +150,6 @@ async function handleCreate(req: VercelRequest, res: VercelResponse, body: Proce
   }
 }
 
-function dispatchInBackground(jobId: string) {
-  void dispatchToWorker(jobId)
-    .then(async (dispatch) => {
-      if (dispatch.ok) return;
-      console.warn('Worker dispatch failed:', {
-        jobId,
-        status: dispatch.status,
-        error: dispatch.error
-      });
-      const retryError = dispatch.error ?? {
-        code: 'dispatch_failed',
-        message: 'Worker dispatch failed. Try again shortly.'
-      };
-      await updateJobRecord(jobId, {
-        status: 'queued',
-        stage: 'queued',
-        progress: 0,
-        error: retryError
-      });
-    })
-    .catch(async (error) => {
-      console.error('Worker dispatch failed:', { jobId, error });
-      const retryError = {
-        code: 'dispatch_failed',
-        message: 'Worker dispatch failed. Try again shortly.'
-      };
-      try {
-        await updateJobRecord(jobId, {
-          status: 'queued',
-          stage: 'queued',
-          progress: 0,
-          error: retryError
-        });
-      } catch (updateError) {
-        console.error('Failed to update job after dispatch error:', updateError);
-      }
-    });
-}
-
 async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessBody) {
   const { jobId, demoCode } = body;
   if (!jobId) {
@@ -289,14 +200,39 @@ async function handleRun(req: VercelRequest, res: VercelResponse, body: ProcessB
       });
     }
 
-    const updated = await updateJobRecord(jobId, {
+    let updated = await updateJobRecord(jobId, {
       status: 'processing',
       stage: 'dispatching',
       progress: 1,
       error: undefined
     });
 
-    dispatchInBackground(jobId);
+    const enqueue = await enqueueWorkerTask(jobId);
+    if (!enqueue.ok) {
+      console.warn('Worker enqueue failed:', {
+        jobId,
+        taskName: enqueue.taskName,
+        mode: enqueue.mode,
+        error: enqueue.error
+      });
+      updated = await updateJobRecord(jobId, {
+        status: 'queued',
+        stage: 'queued',
+        progress: 0,
+        error:
+          enqueue.error ?? {
+            code: 'task_enqueue_failed',
+            message: 'Task enqueue failed. Try again shortly.'
+          }
+      });
+    } else {
+      console.info('Worker task enqueued:', {
+        jobId,
+        taskName: enqueue.taskName,
+        duplicate: enqueue.duplicate,
+        mode: enqueue.mode
+      });
+    }
 
     return res.status(202).json({
       jobId,

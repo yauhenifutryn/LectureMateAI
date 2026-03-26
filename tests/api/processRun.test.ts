@@ -27,7 +27,13 @@ vi.mock('../../api/_lib/rateLimit', () => ({
   getRateLimit: vi.fn(() => 10)
 }));
 
-const fetchMock = vi.fn();
+const { enqueueWorkerTaskMock } = vi.hoisted(() => ({
+  enqueueWorkerTaskMock: vi.fn()
+}));
+
+vi.mock('../../api/_lib/cloudTasks', () => ({
+  enqueueWorkerTask: enqueueWorkerTaskMock
+}));
 
 const createRes = () => {
   const res = {
@@ -79,11 +85,7 @@ describe('process run endpoint', () => {
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.KV_REST_API_URL = 'https://example.com';
     process.env.KV_REST_API_TOKEN = 'token';
-    process.env.WORKER_URL = 'https://worker.example.com';
-    process.env.WORKER_SHARED_SECRET = 'secret';
-    fetchMock.mockReset();
-    // @ts-expect-error - override global fetch for tests
-    global.fetch = fetchMock;
+    enqueueWorkerTaskMock.mockReset();
   });
 
   it('returns 404 when job missing', async () => {
@@ -110,7 +112,11 @@ describe('process run endpoint', () => {
   it('dispatches to the worker for queued jobs', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    enqueueWorkerTaskMock.mockResolvedValueOnce({
+      ok: true,
+      duplicate: false,
+      taskName: 'task-name'
+    });
 
     const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
     const res = createRes();
@@ -118,16 +124,7 @@ describe('process run endpoint', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(202);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://worker.example.com/worker/run',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer secret',
-          'Content-Type': 'application/json'
-        })
-      })
-    );
+    expect(enqueueWorkerTaskMock).toHaveBeenCalledWith(jobId);
     const updated = await getJobRecord(jobId);
     expect(updated?.status).toBe('processing');
     expect(updated?.stage).toBe('dispatching');
@@ -148,7 +145,7 @@ describe('process run endpoint', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(202);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(enqueueWorkerTaskMock).not.toHaveBeenCalled();
   });
 
   it('returns 200 when job already completed', async () => {
@@ -170,13 +167,20 @@ describe('process run endpoint', () => {
     const payload = res.body as { status?: string; resultUrl?: string };
     expect(payload.status).toBe('completed');
     expect(payload.resultUrl).toBe('https://blob/results.md');
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(enqueueWorkerTaskMock).not.toHaveBeenCalled();
   });
 
-  it('returns 202 even when dispatch fails', async () => {
+  it('returns the job to queued state when task enqueue fails', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    fetchMock.mockResolvedValueOnce({ ok: false, status: 500, text: async () => 'fail' });
+    enqueueWorkerTaskMock.mockResolvedValueOnce({
+      ok: false,
+      duplicate: false,
+      error: {
+        code: 'task_enqueue_failed',
+        message: 'Task enqueue failed.'
+      }
+    });
 
     const req = createReq({ body: { action: 'run', jobId, demoCode: 'demo123' } });
     const res = createRes();
@@ -184,6 +188,8 @@ describe('process run endpoint', () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(202);
-    expect(fetchMock).toHaveBeenCalled();
+    const updated = await getJobRecord(jobId);
+    expect(updated?.status).toBe('queued');
+    expect(updated?.error?.code).toBe('task_enqueue_failed');
   });
 });

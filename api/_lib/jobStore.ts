@@ -42,11 +42,17 @@ export type JobRecord = {
   transcriptUrl?: string;
   preview?: string;
   error?: { code?: string; message: string };
+  attemptCount?: number;
+  lastTaskName?: string;
+  leaseExpiresAt?: string;
+  lastErrorAt?: string;
 };
 
 const JOB_PREFIX = 'job:';
 const ACTIVE_JOB_PREFIX = 'active-job:';
+const JOB_LEASE_PREFIX = 'job-lease:';
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24;
+const DEFAULT_LEASE_TTL_SECONDS = 31 * 60;
 const KV_RETRY_ATTEMPTS = 2;
 
 async function withKvRetry<T>(operation: () => Promise<T>): Promise<T> {
@@ -86,6 +92,16 @@ export function getJobTtlSeconds(): number {
   return raw;
 }
 
+function getJobLeaseKey(jobId: string): string {
+  return `${JOB_LEASE_PREFIX}${jobId}`;
+}
+
+function getJobLeaseTtlSeconds(): number {
+  const raw = Number(process.env.JOB_LEASE_TTL_SECONDS ?? DEFAULT_LEASE_TTL_SECONDS);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LEASE_TTL_SECONDS;
+  return raw;
+}
+
 export async function setJobRecord(job: JobRecord): Promise<void> {
   ensureKvConfigured();
   await withKvRetry(() => kv.set(getJobKey(job.id), job, { ex: getJobTtlSeconds() }));
@@ -110,6 +126,10 @@ export async function updateJobRecord(
     ...patch,
     updatedAt: new Date().toISOString()
   };
+
+  if (patch.error !== undefined) {
+    updated.lastErrorAt = patch.error ? updated.updatedAt : existing.lastErrorAt;
+  }
 
   await setJobRecord(updated);
   return updated;
@@ -137,6 +157,45 @@ export async function clearActiveJobId(access: JobAccess, expectedJobId?: string
   if (expectedJobId) {
     const current = await withKvRetry(() => kv.get<string>(key));
     if (current !== expectedJobId) return;
+  }
+  await withKvRetry(() => kv.del(key));
+}
+
+export async function acquireJobLease(
+  jobId: string,
+  owner: string
+): Promise<{ owner: string; expiresAt: string } | null> {
+  ensureKvConfigured();
+  const ttlSeconds = getJobLeaseTtlSeconds();
+  const lease = {
+    owner,
+    expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString()
+  };
+  const result = await withKvRetry(() =>
+    kv.set(getJobLeaseKey(jobId), lease, { nx: true, ex: ttlSeconds })
+  );
+  return result === 'OK' ? lease : null;
+}
+
+export async function getJobLease(
+  jobId: string
+): Promise<{ owner: string; expiresAt: string } | null> {
+  ensureKvConfigured();
+  return (
+    (await withKvRetry(() =>
+      kv.get<{ owner: string; expiresAt: string }>(getJobLeaseKey(jobId))
+    )) ?? null
+  );
+}
+
+export async function releaseJobLease(jobId: string, expectedOwner?: string): Promise<void> {
+  ensureKvConfigured();
+  const key = getJobLeaseKey(jobId);
+  if (expectedOwner) {
+    const current = await withKvRetry(() =>
+      kv.get<{ owner: string; expiresAt: string }>(key)
+    );
+    if (!current || current.owner !== expectedOwner) return;
   }
   await withKvRetry(() => kv.del(key));
 }

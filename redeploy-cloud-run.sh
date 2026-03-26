@@ -33,6 +33,7 @@ build_and_deploy() {
   local service_name="$1"
   local dockerfile_path="$2"
   local image_name="$3"
+  local auth_mode="$4"
   local temp_dockerfile="Dockerfile"
   local image_ref="gcr.io/${PROJECT_ID}/${image_name}:$(date +%Y%m%d-%H%M%S)"
 
@@ -52,11 +53,16 @@ build_and_deploy() {
   rm -f "${temp_dockerfile}"
   trap - RETURN
 
+  local auth_flag="--allow-unauthenticated"
+  if [[ "${auth_mode}" == "private" ]]; then
+    auth_flag="--no-allow-unauthenticated"
+  fi
+
   gcloud run deploy "${service_name}" \
     --project "${PROJECT_ID}" \
     --region "${REGION}" \
     --image "${image_ref}" \
-    --allow-unauthenticated
+    "${auth_flag}"
 }
 
 main() {
@@ -71,14 +77,14 @@ main() {
 
   case "${target}" in
     app)
-      build_and_deploy "${APP_SERVICE}" "cloudrun/Dockerfile" "lecturemate-app"
+      build_and_deploy "${APP_SERVICE}" "cloudrun/Dockerfile" "lecturemate-app" "public"
       ;;
     worker)
-      build_and_deploy "${WORKER_SERVICE}" "worker/Dockerfile" "lecturemate-worker"
+      build_and_deploy "${WORKER_SERVICE}" "worker/Dockerfile" "lecturemate-worker" "private"
       ;;
     both)
-      build_and_deploy "${APP_SERVICE}" "cloudrun/Dockerfile" "lecturemate-app"
-      build_and_deploy "${WORKER_SERVICE}" "worker/Dockerfile" "lecturemate-worker"
+      build_and_deploy "${APP_SERVICE}" "cloudrun/Dockerfile" "lecturemate-app" "public"
+      build_and_deploy "${WORKER_SERVICE}" "worker/Dockerfile" "lecturemate-worker" "private"
       ;;
     *)
       usage
