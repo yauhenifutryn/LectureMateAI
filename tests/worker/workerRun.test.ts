@@ -305,7 +305,7 @@ describe('worker runJob', () => {
     expect(result.resultUrl).toBe('https://gcs/results.md');
     expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalled();
     expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith(
-      expect.stringContaining('Speech-to-Text'),
+      expect.stringContaining('Transcript unavailable'),
       jobId
     );
     const updated = await getJobRecord(jobId);

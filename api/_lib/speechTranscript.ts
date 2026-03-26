@@ -1,6 +1,7 @@
 import { v2 as speechV2 } from '@google-cloud/speech';
 import type { FilePayload } from './gemini.js';
 import { GenerationRetryError } from './gemini.js';
+import { prepareAudioForSpeech } from './speechAudioPrep.js';
 
 type BatchRecognizeOperation = {
   promise(): Promise<[unknown, ...unknown[]]>;
@@ -18,6 +19,10 @@ type SpeechTranscriptDeps = {
   getBucketName?: () => string | undefined;
   getLocation?: () => string;
   getLanguageCodes?: () => string[];
+  prepareAudio?: (audio: FilePayload) => Promise<{
+    audioUris: string[];
+    cleanup?: () => Promise<void>;
+  }>;
 };
 
 type SpeechTranscriptDiagnostics = {
@@ -66,9 +71,6 @@ const getDefaultLanguageCodes = (): string[] => {
 
 const buildRecognizer = (projectId: string, location: string): string =>
   `projects/${projectId}/locations/${location}/recognizers/_`;
-
-const buildGcsUri = (bucketName: string, objectName: string): string =>
-  `gs://${bucketName}/${objectName.replace(/^\/+/, '')}`;
 
 const extractTranscriptText = (
   response: unknown,
@@ -130,6 +132,7 @@ export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {})
   const getBucketName = deps.getBucketName ?? getDefaultBucketName;
   const getLocation = deps.getLocation ?? getDefaultLocation;
   const getLanguageCodes = deps.getLanguageCodes ?? getDefaultLanguageCodes;
+  const prepareAudio = deps.prepareAudio ?? prepareAudioForSpeech;
 
   return async (audio: FilePayload): Promise<string> => {
     const projectId = getProjectId();
@@ -144,50 +147,70 @@ export function createSpeechTranscriptGenerator(deps: SpeechTranscriptDeps = {})
 
     const location = getLocation();
     const configuredLanguageCodes = getLanguageCodes();
-    const audioUri = buildGcsUri(bucketName, audio.objectName);
     const client = clientFactory(location);
+    const preparedAudio = await prepareAudio(audio);
+    const transcriptChunks: string[] = [];
 
-    const request = {
-      recognizer: buildRecognizer(projectId, location),
-      config: {
-        autoDecodingConfig: {},
-        languageCodes: configuredLanguageCodes,
-        model: DEFAULT_MODEL,
-        features: {
-          enableAutomaticPunctuation: true
-        },
-        denoiserConfig: {
-          denoiseAudio: true,
-          snrThreshold: 0
+    try {
+      for (const [index, audioUri] of preparedAudio.audioUris.entries()) {
+        const request = {
+          recognizer: buildRecognizer(projectId, location),
+          config: {
+            autoDecodingConfig: {},
+            languageCodes: configuredLanguageCodes,
+            model: DEFAULT_MODEL,
+            features: {
+              enableAutomaticPunctuation: true
+            },
+            denoiserConfig: {
+              denoiseAudio: true,
+              snrThreshold: 0
+            }
+          },
+          files: [{ uri: audioUri }],
+          recognitionOutputConfig: {
+            inlineResponseConfig: {}
+          }
+        };
+
+        const [operation] = await client.batchRecognize(request);
+        const [response] = await operation.promise();
+        const { transcriptText, diagnostics } = extractTranscriptText(
+          response,
+          audioUri,
+          configuredLanguageCodes
+        );
+
+        const chunkDiagnostics = {
+          ...diagnostics,
+          chunkIndex: index + 1,
+          totalChunks: preparedAudio.audioUris.length
+        };
+
+        if (diagnostics.fileErrorMessage) {
+          console.error('Speech-to-Text file recognition failed:', chunkDiagnostics);
+          throw new Error(`Speech-to-Text recognition failed: ${diagnostics.fileErrorMessage}`);
         }
-      },
-      files: [{ uri: audioUri }],
-      recognitionOutputConfig: {
-        inlineResponseConfig: {}
+
+        if (!transcriptText) {
+          console.warn('Speech-to-Text returned empty transcript:', chunkDiagnostics);
+          throw new GenerationRetryError('Received empty transcript response.');
+        }
+
+        console.info('Speech-to-Text transcript generated:', chunkDiagnostics);
+        transcriptChunks.push(transcriptText);
       }
-    };
 
-    const [operation] = await client.batchRecognize(request);
-    const [response] = await operation.promise();
-    const { transcriptText, diagnostics } = extractTranscriptText(
-      response,
-      audioUri,
-      configuredLanguageCodes
-    );
-
-    if (diagnostics.fileErrorMessage) {
-      console.error('Speech-to-Text file recognition failed:', diagnostics);
-      throw new Error(`Speech-to-Text recognition failed: ${diagnostics.fileErrorMessage}`);
+      const transcriptText = transcriptChunks.join('\n\n').trim();
+      if (!transcriptText) {
+        throw new GenerationRetryError('Received empty transcript response.');
+      }
+      return transcriptText;
+    } finally {
+      await preparedAudio.cleanup?.().catch((error) => {
+        console.warn('Speech-to-Text temp audio cleanup failed:', error);
+      });
     }
-
-    if (!transcriptText) {
-      console.warn('Speech-to-Text returned empty transcript:', diagnostics);
-      throw new GenerationRetryError('Received empty transcript response.');
-    }
-
-    console.info('Speech-to-Text transcript generated:', diagnostics);
-
-    return transcriptText;
   };
 }
 

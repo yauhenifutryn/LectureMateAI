@@ -9,6 +9,7 @@ RUN npx tsc -p worker/tsconfig.json
 
 FROM node:20-slim
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/worker/dist ./worker/dist

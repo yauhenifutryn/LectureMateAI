@@ -61,6 +61,16 @@ export const uploadTextObject = async (
   await storage.bucket(bucketName).file(objectName).save(content, { contentType });
 };
 
+export const uploadBufferObject = async (
+  objectName: string,
+  content: Buffer,
+  contentType = 'application/octet-stream'
+): Promise<void> => {
+  const storage = await getStorage();
+  const bucketName = parseBucketEnv();
+  await storage.bucket(bucketName).file(objectName).save(content, { contentType });
+};
+
 export const downloadObjectBuffer = async (objectName: string): Promise<Buffer> => {
   const storage = await getStorage();
   const bucketName = parseBucketEnv();

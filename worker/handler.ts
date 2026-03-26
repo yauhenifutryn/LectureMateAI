@@ -55,7 +55,7 @@ const buildPreview = (text: string, maxChars = 2000): string => {
 const TRANSCRIPT_FALLBACK_ATTEMPTS = 3;
 const TRANSCRIPT_LOCAL_RETRY_ATTEMPTS = 3;
 const TRANSCRIPT_UNAVAILABLE_PLACEHOLDER =
-  '(Transcript unavailable after repeated empty responses from Speech-to-Text. Study guide generated without transcript.)';
+  '(Transcript unavailable after automated transcription fallback. Study guide generated without transcript.)';
 
 const isTransientUpstreamError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
@@ -98,7 +98,7 @@ const shouldFallbackTranscript = (error: unknown, execution?: WorkerExecutionCon
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   const attemptCount = execution?.attemptCount ?? 1;
   return (
-    message.includes('speech-to-text recognition failed') ||
+    message.includes('speech-to-text') ||
     (
       attemptCount >= TRANSCRIPT_FALLBACK_ATTEMPTS &&
       message.includes('empty transcript response')
@@ -111,9 +111,9 @@ const isEmptyTranscriptError = (error: unknown): boolean => {
   return message.includes('empty transcript response');
 };
 
-const isSpeechRecognitionLimitError = (error: unknown): boolean => {
+const isSpeechTranscriptFallbackError = (error: unknown): boolean => {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
-  return message.includes('speech-to-text recognition failed');
+  return message.includes('speech-to-text');
 };
 
 export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
@@ -281,25 +281,35 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         transcriptOutputText = transcriptText;
       } catch (error) {
         let handledTranscriptFailure = false;
-        if (isSpeechRecognitionLimitError(error)) {
-          transcriptText = await generateTranscriptFromUploaded(
-            apiKey,
-            {
-              audio: job.request.audio,
-              modelId: job.request.modelId
-            },
-            uploaded
-          );
-          if (transcriptText && transcriptText.trim().length > 0) {
-            transcriptOutputText = transcriptText;
-            console.warn('Transcript fallback activated via Gemini transcript generation:', {
+        if (isSpeechTranscriptFallbackError(error)) {
+          try {
+            transcriptText = await generateTranscriptFromUploaded(
+              apiKey,
+              {
+                audio: job.request.audio,
+                modelId: job.request.modelId
+              },
+              uploaded
+            );
+            if (transcriptText && transcriptText.trim().length > 0) {
+              transcriptOutputText = transcriptText.trim();
+              transcriptText = transcriptText.trim();
+              console.warn('Transcript fallback activated via Gemini transcript generation:', {
+                jobId,
+                taskName: execution?.taskName,
+                retryCount: execution?.retryCount,
+                attemptCount: execution?.attemptCount
+              });
+              handledTranscriptFailure = true;
+            }
+          } catch (fallbackError) {
+            console.warn('Gemini transcript fallback failed after Speech-to-Text failure:', {
               jobId,
               taskName: execution?.taskName,
               retryCount: execution?.retryCount,
-              attemptCount: execution?.attemptCount
+              attemptCount: execution?.attemptCount,
+              error: fallbackError
             });
-            transcriptText = transcriptText.trim();
-            handledTranscriptFailure = true;
           }
         }
         if (!handledTranscriptFailure) {

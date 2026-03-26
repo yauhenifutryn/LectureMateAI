@@ -16,6 +16,11 @@ const buildAudio = (): FilePayload => ({
   mimeType: 'audio/mpeg'
 });
 
+const buildPreparedAudio = (audioUris: string[] = ['gs://lecturemateai-uploads-485823/uploads/job/audio.mp3']) => ({
+  audioUris,
+  cleanup: vi.fn(async () => {})
+});
+
 describe('speech transcript generator', () => {
   let infoSpy: ReturnType<typeof vi.spyOn>;
   let warnSpy: ReturnType<typeof vi.spyOn>;
@@ -53,7 +58,8 @@ describe('speech transcript generator', () => {
       clientFactory: () => client as never,
       getProjectId: () => 'lecturemateai-485823',
       getBucketName: () => 'lecturemateai-uploads-485823',
-      getLocation: () => 'us'
+      getLocation: () => 'us',
+      prepareAudio: async () => buildPreparedAudio()
     });
 
     const transcript = await transcribe(buildAudio());
@@ -94,7 +100,8 @@ describe('speech transcript generator', () => {
       clientFactory: () => client as never,
       getProjectId: () => 'lecturemateai-485823',
       getBucketName: () => 'lecturemateai-uploads-485823',
-      getLocation: () => 'us'
+      getLocation: () => 'us',
+      prepareAudio: async () => buildPreparedAudio()
     });
 
     await transcribe(buildAudio());
@@ -132,7 +139,8 @@ describe('speech transcript generator', () => {
       clientFactory: () => client as never,
       getProjectId: () => 'lecturemateai-485823',
       getBucketName: () => 'lecturemateai-uploads-485823',
-      getLocation: () => 'us'
+      getLocation: () => 'us',
+      prepareAudio: async () => buildPreparedAudio()
     });
 
     await expect(transcribe(buildAudio())).resolves.toBe('Recovered inline transcript');
@@ -169,10 +177,68 @@ describe('speech transcript generator', () => {
       clientFactory: () => client as never,
       getProjectId: () => 'lecturemateai-485823',
       getBucketName: () => 'lecturemateai-uploads-485823',
-      getLocation: () => 'us'
+      getLocation: () => 'us',
+      prepareAudio: async () => buildPreparedAudio(['gs://lecturemateai-uploads-485823/audio.mp3'])
     });
 
     await expect(transcribe(buildAudio())).resolves.toBe('Recovered by fallback key');
+  });
+
+  it('concatenates transcripts from prepared audio chunks and cleans them up', async () => {
+    const cleanup = vi.fn(async () => {});
+    const operationOne: FakeOperation = {
+      promise: vi.fn().mockResolvedValue([
+        {
+          results: {
+            'gs://lecturemateai-uploads-485823/chunk-000.flac': {
+              inlineResult: {
+                transcript: {
+                  results: [{ alternatives: [{ transcript: 'Chunk one' }] }]
+                }
+              }
+            }
+          }
+        }
+      ])
+    };
+    const operationTwo: FakeOperation = {
+      promise: vi.fn().mockResolvedValue([
+        {
+          results: {
+            'gs://lecturemateai-uploads-485823/chunk-001.flac': {
+              inlineResult: {
+                transcript: {
+                  results: [{ alternatives: [{ transcript: 'Chunk two' }] }]
+                }
+              }
+            }
+          }
+        }
+      ])
+    };
+    const client: FakeClient = {
+      batchRecognize: vi.fn()
+        .mockResolvedValueOnce([operationOne])
+        .mockResolvedValueOnce([operationTwo])
+    };
+
+    const transcribe = createSpeechTranscriptGenerator({
+      clientFactory: () => client as never,
+      getProjectId: () => 'lecturemateai-485823',
+      getBucketName: () => 'lecturemateai-uploads-485823',
+      getLocation: () => 'us',
+      prepareAudio: async () => ({
+        audioUris: [
+          'gs://lecturemateai-uploads-485823/chunk-000.flac',
+          'gs://lecturemateai-uploads-485823/chunk-001.flac'
+        ],
+        cleanup
+      })
+    });
+
+    await expect(transcribe(buildAudio())).resolves.toBe('Chunk one\n\nChunk two');
+    expect(client.batchRecognize).toHaveBeenCalledTimes(2);
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 
   it('raises a retryable error when Speech-to-Text returns no transcript text', async () => {
@@ -197,7 +263,8 @@ describe('speech transcript generator', () => {
       clientFactory: () => client as never,
       getProjectId: () => 'lecturemateai-485823',
       getBucketName: () => 'lecturemateai-uploads-485823',
-      getLocation: () => 'us'
+      getLocation: () => 'us',
+      prepareAudio: async () => buildPreparedAudio()
     });
 
     await expect(transcribe(buildAudio())).rejects.toBeInstanceOf(GenerationRetryError);
