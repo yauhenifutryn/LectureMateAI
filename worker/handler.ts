@@ -220,7 +220,7 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
         uploaded
       );
       if (!transcriptText || transcriptText.trim().length === 0) {
-        throw new Error('Transcript missing in output.');
+        throw new GenerationRetryError('Received empty transcript response.');
       }
     }
 

@@ -149,17 +149,17 @@ describe('worker runJob', () => {
     expect(updated?.status).toBe('completed');
   });
 
-  it('fails when transcript is missing from output', async () => {
+  it('requeues when transcript generation returns empty output', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
     vi.mocked(generateTranscriptFromUploaded).mockResolvedValueOnce('');
 
     const result = await runJob(jobId);
 
-    expect(result.status).toBe('failed');
+    expect(result.status).toBe('queued');
     const updated = await getJobRecord(jobId);
-    expect(updated?.error?.code).toBe('transcript_missing');
-    expect(vi.mocked(cleanupBlobUrls)).toHaveBeenCalledWith(['uploads/job/audio.mp3'], console);
+    expect(updated?.error?.code).toBe('generation_retry');
+    expect(vi.mocked(cleanupBlobUrls)).not.toHaveBeenCalled();
   });
 
   it('logs the model id used for generation', async () => {

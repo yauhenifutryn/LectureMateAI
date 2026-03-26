@@ -547,6 +547,10 @@ export async function generateStudyGuideFromUploaded(
     if (isTimeoutError(error)) {
       throw new GenerationRetryError();
     }
+    const message = error instanceof Error ? error.message.toLowerCase() : '';
+    if (message.includes('empty transcript response')) {
+      throw new GenerationRetryError('Received empty transcript response.');
+    }
     throw error;
   }
 }
