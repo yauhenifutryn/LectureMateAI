@@ -308,4 +308,29 @@ describe('worker runJob', () => {
     expect(updated?.status).toBe('completed');
     expect(updated?.transcriptUrl).toBe('https://gcs/transcript.md');
   });
+
+  it('falls back to study-guide-only completion when Speech-to-Text returns a file recognition error', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateTranscriptFromSpeech).mockRejectedValue(
+      new Error('Speech-to-Text recognition failed: unsupported audio encoding')
+    );
+
+    const result = await runJob(jobId, {
+      taskName: 'job-task-1',
+      retryCount: 0,
+      attemptCount: 1
+    });
+
+    expect(result.status).toBe('completed');
+    expect(result.resultUrl).toBe('https://gcs/results.md');
+    expect(vi.mocked(generateStudyGuideFromUploaded)).toHaveBeenCalled();
+    expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith(
+      expect.stringContaining('Speech-to-Text'),
+      jobId
+    );
+    const updated = await getJobRecord(jobId);
+    expect(updated?.status).toBe('completed');
+    expect(updated?.transcriptUrl).toBe('https://gcs/transcript.md');
+  });
 });

@@ -97,8 +97,11 @@ const shouldFallbackTranscript = (error: unknown, execution?: WorkerExecutionCon
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   const attemptCount = execution?.attemptCount ?? 1;
   return (
-    attemptCount >= TRANSCRIPT_FALLBACK_ATTEMPTS &&
-    message.includes('empty transcript response')
+    message.includes('speech-to-text recognition failed') ||
+    (
+      attemptCount >= TRANSCRIPT_FALLBACK_ATTEMPTS &&
+      message.includes('empty transcript response')
+    )
   );
 };
 
