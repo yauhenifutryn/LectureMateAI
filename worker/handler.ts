@@ -52,6 +52,7 @@ const buildPreview = (text: string, maxChars = 2000): string => {
 };
 
 const TRANSCRIPT_FALLBACK_ATTEMPTS = 3;
+const TRANSCRIPT_LOCAL_RETRY_ATTEMPTS = 3;
 const TRANSCRIPT_UNAVAILABLE_PLACEHOLDER =
   '(Transcript unavailable after repeated empty responses from Gemini. Study guide generated without transcript.)';
 
@@ -99,6 +100,11 @@ const shouldFallbackTranscript = (error: unknown, execution?: WorkerExecutionCon
     attemptCount >= TRANSCRIPT_FALLBACK_ATTEMPTS &&
     message.includes('empty transcript response')
   );
+};
+
+const isEmptyTranscriptError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  return message.includes('empty transcript response');
 };
 
 export async function runJob(jobId: string, execution?: WorkerExecutionContext): Promise<WorkerResult> {
@@ -235,16 +241,38 @@ export async function runJob(jobId: string, execution?: WorkerExecutionContext):
     let transcriptOutputText: string | null = null;
     if (job.request.audio) {
       try {
-        transcriptText = await generateTranscriptFromUploaded(
-          apiKey,
-          {
-            audio: job.request.audio,
-            modelId: job.request.modelId
-          },
-          uploaded
-        );
-        if (!transcriptText || transcriptText.trim().length === 0) {
-          throw new GenerationRetryError('Received empty transcript response.');
+        let lastTranscriptError: unknown;
+        for (let transcriptAttempt = 1; transcriptAttempt <= TRANSCRIPT_LOCAL_RETRY_ATTEMPTS; transcriptAttempt += 1) {
+          try {
+            transcriptText = await generateTranscriptFromUploaded(
+              apiKey,
+              {
+                audio: job.request.audio,
+                modelId: job.request.modelId
+              },
+              uploaded
+            );
+            if (!transcriptText || transcriptText.trim().length === 0) {
+              throw new GenerationRetryError('Received empty transcript response.');
+            }
+            lastTranscriptError = undefined;
+            break;
+          } catch (error) {
+            lastTranscriptError = error;
+            if (!isEmptyTranscriptError(error) || transcriptAttempt === TRANSCRIPT_LOCAL_RETRY_ATTEMPTS) {
+              throw error;
+            }
+            console.warn('Empty transcript response. Retrying transcript generation locally:', {
+              jobId,
+              taskName: execution?.taskName,
+              retryCount: execution?.retryCount,
+              attemptCount: execution?.attemptCount,
+              transcriptAttempt
+            });
+          }
+        }
+        if (lastTranscriptError) {
+          throw lastTranscriptError;
         }
         transcriptOutputText = transcriptText;
       } catch (error) {

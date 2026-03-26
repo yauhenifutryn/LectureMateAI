@@ -105,10 +105,28 @@ describe('worker runJob', () => {
     kvMock.get.mockClear();
     kvMock.lpush.mockClear();
     kvMock.ltrim.mockClear();
-    vi.mocked(uploadGeminiFiles).mockClear();
-    vi.mocked(checkGeminiFiles).mockClear();
-    vi.mocked(generateTranscriptFromUploaded).mockClear();
-    vi.mocked(generateStudyGuideFromUploaded).mockClear();
+    vi.mocked(uploadGeminiFiles).mockReset();
+    vi.mocked(uploadGeminiFiles).mockResolvedValue([
+      {
+        fileName: 'file-1',
+        fileUri: 'gs://file-1',
+        mimeType: 'audio/mpeg',
+        displayName: 'Lecture Audio'
+      }
+    ]);
+    vi.mocked(checkGeminiFiles).mockReset();
+    vi.mocked(checkGeminiFiles).mockResolvedValue({
+      ready: true,
+      failed: false,
+      readyCount: 1,
+      total: 1
+    });
+    vi.mocked(generateTranscriptFromUploaded).mockReset();
+    vi.mocked(generateTranscriptFromUploaded).mockResolvedValue('Transcript');
+    vi.mocked(generateStudyGuideFromUploaded).mockReset();
+    vi.mocked(generateStudyGuideFromUploaded).mockResolvedValue(
+      '===STUDY_GUIDE===Guide===TRANSCRIPT===Transcript'
+    );
     vi.mocked(storeResultMarkdown).mockClear();
     vi.mocked(storeTranscriptText).mockClear();
     vi.mocked(cleanupBlobUrls).mockClear();
@@ -152,7 +170,7 @@ describe('worker runJob', () => {
   it('requeues when transcript generation returns empty output', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromUploaded).mockResolvedValueOnce('');
+    vi.mocked(generateTranscriptFromUploaded).mockResolvedValue('');
 
     const result = await runJob(jobId);
 
@@ -165,7 +183,7 @@ describe('worker runJob', () => {
   it('requeues when transcript generation rejects with an empty transcript response error', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromUploaded).mockRejectedValueOnce(
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValue(
       new Error('Received empty transcript response.')
     );
 
@@ -174,6 +192,21 @@ describe('worker runJob', () => {
     expect(result.status).toBe('queued');
     const updated = await getJobRecord(jobId);
     expect(updated?.error?.code).toBe('generation_retry');
+  });
+
+  it('retries transcript generation locally before failing the job', async () => {
+    const jobId = buildJobId();
+    await setJobRecord(buildJob(jobId));
+    vi.mocked(generateTranscriptFromUploaded)
+      .mockRejectedValueOnce(new Error('Received empty transcript response.'))
+      .mockResolvedValueOnce('')
+      .mockResolvedValueOnce('Recovered transcript');
+
+    const result = await runJob(jobId);
+
+    expect(result.status).toBe('completed');
+    expect(vi.mocked(generateTranscriptFromUploaded)).toHaveBeenCalledTimes(3);
+    expect(vi.mocked(storeTranscriptText)).toHaveBeenCalledWith('Recovered transcript', jobId);
   });
 
   it('logs the model id used for generation', async () => {
@@ -251,7 +284,7 @@ describe('worker runJob', () => {
   it('falls back to study-guide-only completion after repeated empty transcript attempts', async () => {
     const jobId = buildJobId();
     await setJobRecord(buildJob(jobId));
-    vi.mocked(generateTranscriptFromUploaded).mockRejectedValueOnce(
+    vi.mocked(generateTranscriptFromUploaded).mockRejectedValue(
       new Error('Received empty transcript response.')
     );
 
