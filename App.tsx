@@ -119,7 +119,7 @@ const App: React.FC = () => {
 
   const toLogTone = (code?: string): ProcessingLogTone => {
     if (!code) return 'info';
-    if (['dispatch_failed', 'generation_retry', 'overloaded_retry'].includes(code)) return 'warning';
+    if (['dispatch_failed', 'generation_retry', 'overloaded_retry', 'upstream_retry'].includes(code)) return 'warning';
     return 'error';
   };
 

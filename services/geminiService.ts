@@ -334,7 +334,12 @@ const buildAnalysisFromStatus = async (
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-const TRANSIENT_ERROR_CODES = new Set(['dispatch_failed', 'overloaded_retry', 'generation_retry']);
+const TRANSIENT_ERROR_CODES = new Set([
+  'dispatch_failed',
+  'overloaded_retry',
+  'generation_retry',
+  'upstream_retry'
+]);
 
 const isTransientStatusError = (status: JobStatusResponse): boolean => {
   const code = status.error?.code;
