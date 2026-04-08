@@ -1,8 +1,18 @@
 {
   "name": "lecturemate-ai",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "Turn lecture audio and slide PDFs into study guides and transcripts using Gemini and Cloud Speech-to-Text.",
+  "author": "Yauheni Futryn",
+  "license": "SEE LICENSE IN README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yauhenifutryn/LectureMateAI.git"
+  },
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
