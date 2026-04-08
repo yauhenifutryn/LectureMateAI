@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Icons } from './Icon';
 import { appendAmplitude, mapRmsToAmplitude } from './audioWaveform';
+import { formatTime } from '../utils/time';
 
 interface AudioRecorderProps {
   onRecordingComplete: (file: File) => void;
@@ -264,11 +265,6 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onRecordingComplete }) =>
     }
   };
 
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   if (isRecording) {
     return (

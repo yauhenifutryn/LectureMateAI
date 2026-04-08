@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Icons } from './Icon';
 import { resampleWaveformData } from './audioWaveform';
+import { formatTime } from '../utils/time';
 
 interface AudioPlayerProps {
   file: File;
@@ -269,12 +270,6 @@ const AudioPlayer: React.FC<AudioPlayerProps> = ({
     setCurrentTime(newTime);
   };
 
-  const formatTime = (t: number) => {
-    if (!t || isNaN(t)) return "0:00";
-    const mins = Math.floor(t / 60);
-    const secs = Math.floor(t % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <div className="w-full bg-white rounded-xl border border-slate-200 p-4 shadow-sm flex flex-col gap-4">

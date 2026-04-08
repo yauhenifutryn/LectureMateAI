@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { Icons } from './Icon';
-import { getElapsedSeconds } from '../utils/time';
+import { getElapsedSeconds, formatTime } from '../utils/time';
 
 interface ProcessingStateProps {
   onCancel: () => void;
@@ -66,12 +66,6 @@ const ProcessingState: React.FC<ProcessingStateProps> = ({
     document.addEventListener('visibilitychange', handleVisibility);
     return () => document.removeEventListener('visibilitychange', handleVisibility);
   }, []);
-
-  const formatTime = (totalSeconds: number) => {
-    const mins = Math.floor(totalSeconds / 60);
-    const secs = totalSeconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-  };
 
   return (
     <div className="flex flex-col items-center justify-center py-20 text-center animate-fade-in relative z-20">

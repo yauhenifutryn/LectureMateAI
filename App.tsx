@@ -25,12 +25,10 @@ import AudioPlayer from './components/AudioPlayer';
 import { Icons } from './components/Icon';
 import AccessGate from './components/AccessGate';
 import AdminPanel from './components/AdminPanel';
-import { shouldEnablePlaybackWaveform } from './utils/playbackWaveform';
+import { shouldEnablePlaybackWaveform, AudioInputMode } from './utils/playbackWaveform';
 import { isMobileUserAgent } from './utils/device';
 import { getAnalysisStartState } from './utils/analysisState';
 import { formatUploadCheckpoint } from './utils/uploadCheckpoint';
-
-type AudioInputMode = 'upload' | 'record';
 type Tab = 'study_guide' | 'transcript' | 'chat';
 type ProcessingLogTone = 'info' | 'warning' | 'error';
 type ProcessingLog = { message: string; tone: ProcessingLogTone };
@@ -527,8 +525,7 @@ const App: React.FC = () => {
             <h1 className="text-xl font-bold font-serif text-slate-900 tracking-tight">LectureMate AI</h1>
           </div>
           <div className="flex items-center gap-3 text-xs sm:text-sm text-slate-500 font-medium">
-            <span className="hidden sm:inline">The Master Tutor</span>
-            <span className="sm:hidden">The Master Tutor</span>
+            <span>The Master Tutor</span>
             <button
               type="button"
               onClick={handleLock}
