@@ -25,8 +25,24 @@ worker/dist/
 *.sw?
 .worktrees/
 .codex/
+.vercel/
+
+# Environment variables
+.env
+.env.*
+!.env.example
+
+# Build artifacts
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# Internal docs (not for public repo)
 AGENTS.md
+CLAUDE.md
 CONTINUITY.md
 PROJECT_LOG.md
 UI_TRINITY.md
-docs/plans/2026-01-20-project-log-design.md
+CLOUD_RUN_REDEPLOY.md
+security_best_practices_report.md
+docs/plans/
