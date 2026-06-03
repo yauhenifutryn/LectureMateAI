@@ -27,12 +27,15 @@
 | `GCS_BUCKET` | Yes | App, Worker | Bucket for uploads and results. |
 | `SYSTEM_INSTRUCTIONS` | Yes in production | App, Worker | Master tutor prompt, see `prompts/system_instructions.txt`. |
 | `ADMIN_PASSWORD` | Yes in production | App | Admin access for `/admin`. |
-| `KV_REST_API_URL` | Yes | App, Worker | KV endpoint. |
-| `KV_REST_API_TOKEN` | Yes | App, Worker | KV token. |
-| `KV_REST_API_READ_ONLY_TOKEN` | Recommended | App, Worker | Falls back to `KV_REST_API_TOKEN` if unset. |
-| `UPSTASH_REDIS_REST_URL` | Optional | App, Worker | Alternative to `KV_REST_API_URL`. |
-| `UPSTASH_REDIS_REST_TOKEN` | Optional | App, Worker | Alternative to `KV_REST_API_TOKEN`. |
-| `UPSTASH_REDIS_REST_READ_ONLY_TOKEN` | Optional | App, Worker | Alternative read only token. |
+| `STORE_BACKEND` | Optional | App, Worker | Shared-state backend selector: `firestore` (default) or `upstash`. |
+| `GOOGLE_CLOUD_PROJECT` | Yes when `STORE_BACKEND=firestore` | App, Worker | GCP project that owns the Firestore database. On Cloud Run it is usually set automatically. |
+| `FIRESTORE_DATABASE_ID` | Optional | App, Worker | Firestore database id when `STORE_BACKEND=firestore`. Defaults to `(default)`. |
+| `KV_REST_API_URL` | Yes when `STORE_BACKEND=upstash` | App, Worker | KV endpoint. Only needed when `STORE_BACKEND=upstash`. |
+| `KV_REST_API_TOKEN` | Yes when `STORE_BACKEND=upstash` | App, Worker | KV token. Only needed when `STORE_BACKEND=upstash`. |
+| `KV_REST_API_READ_ONLY_TOKEN` | Optional | App, Worker | Only needed when `STORE_BACKEND=upstash`. Falls back to `KV_REST_API_TOKEN` if unset. |
+| `UPSTASH_REDIS_REST_URL` | Optional | App, Worker | Only needed when `STORE_BACKEND=upstash`. Alternative to `KV_REST_API_URL`. |
+| `UPSTASH_REDIS_REST_TOKEN` | Optional | App, Worker | Only needed when `STORE_BACKEND=upstash`. Alternative to `KV_REST_API_TOKEN`. |
+| `UPSTASH_REDIS_REST_READ_ONLY_TOKEN` | Optional | App, Worker | Only needed when `STORE_BACKEND=upstash`. Alternative read only token. |
 | `CLOUD_TASKS_PROJECT_ID` | Yes in production | App | GCP project that owns the task queue. |
 | `CLOUD_TASKS_LOCATION` | Yes in production | App | Cloud Tasks queue region, usually `us-central1`. |
 | `CLOUD_TASKS_QUEUE_ID` | Yes in production | App | Queue ID for worker dispatch, for example `lecturemate-worker-queue`. |
