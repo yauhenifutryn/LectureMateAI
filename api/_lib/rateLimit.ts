@@ -61,6 +61,12 @@ function hitMemoryRateLimit(
       for (const [k, v] of memoryBuckets) {
         if (v.resetAtMs <= nowMs) memoryBuckets.delete(k);
       }
+      // Hard ceiling: if nothing had expired (sustained outage with many distinct IPs),
+      // evict the oldest bucket by insertion order so memory cannot grow without bound.
+      if (memoryBuckets.size >= MEMORY_BUCKET_CAP) {
+        const oldest = memoryBuckets.keys().next().value;
+        if (oldest !== undefined) memoryBuckets.delete(oldest);
+      }
     }
     memoryBuckets.set(bucketKey, { count: 1, resetAtMs: nowMs + windowSeconds * 1000 });
     return 1 <= limit;
