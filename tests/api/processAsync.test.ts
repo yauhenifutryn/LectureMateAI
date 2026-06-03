@@ -1,21 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const kvMock = vi.hoisted(() => ({
-  set: vi.fn(),
-  decr: vi.fn(async () => 2),
-  lpush: vi.fn(async () => 1),
-  ltrim: vi.fn(async () => 'OK')
-}));
-
-vi.mock('@vercel/kv', () => ({
-  kv: kvMock
-}));
-
-// Demo-code consumption + audit now route through the store (post Task 5).
-// jobStore still uses @vercel/kv in this milestone, so keep kvMock for setJob.
+// Demo-code consumption + audit + job records all route through the store.
 const storeMock = vi.hoisted(() => ({
   consumeDemoCode: vi.fn(async () => 2),
   appendEvent: vi.fn(async () => {}),
+  setJob: vi.fn(async () => {}),
+  getJob: vi.fn(async () => null),
+  setActiveJob: vi.fn(async () => {}),
+  getActiveJob: vi.fn(async () => null),
+  clearActiveJob: vi.fn(async () => {}),
+  acquireLease: vi.fn(async () => null),
+  getLease: vi.fn(async () => null),
+  releaseLease: vi.fn(async () => {}),
+  appendHistory: vi.fn(async () => {}),
+  listHistory: vi.fn(async () => []),
   isConfigured: vi.fn(() => true)
 }));
 
@@ -54,7 +52,8 @@ const buildRes = () => {
 
 describe('process job creation', () => {
   beforeEach(() => {
-    kvMock.set.mockReset();
+    storeMock.setJob.mockClear();
+    storeMock.setActiveJob.mockClear();
     process.env.GEMINI_API_KEY = 'test-key';
     process.env.KV_REST_API_URL = 'https://example.com';
     process.env.KV_REST_API_TOKEN = 'token';
@@ -77,8 +76,9 @@ describe('process job creation', () => {
 
     const payload = res.json.mock.calls[0][0] as { jobId: string };
     expect(payload.jobId).toBeTruthy();
-    expect(kvMock.set).toHaveBeenCalledTimes(2);
-    const [, stored] = kvMock.set.mock.calls[0];
+    expect(storeMock.setJob).toHaveBeenCalledTimes(1);
+    expect(storeMock.setActiveJob).toHaveBeenCalledTimes(1);
+    const [stored] = storeMock.setJob.mock.calls[0];
     expect(stored.status).toBe('queued');
     expect(stored.request.audio.objectName).toBe('uploads/job/audio.mp3');
     expect(stored.access.mode).toBe('demo');

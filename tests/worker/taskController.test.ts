@@ -1,28 +1,52 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildJobId, getJobRecord, setJobRecord } from '../../api/_lib/jobStore';
 
-const kvStore = new Map<string, any>();
-
-const kvMock = vi.hoisted(() => ({
-  set: vi.fn(async (key: string, value: any, opts?: { nx?: boolean }) => {
-    if (opts?.nx && kvStore.has(key)) {
-      return null;
-    }
-    kvStore.set(key, value);
-    return 'OK';
-  }),
-  get: vi.fn(async (key: string) => kvStore.get(key) ?? null),
-  del: vi.fn(async (key: string) => {
-    kvStore.delete(key);
-    return 1;
-  })
-}));
+const storeMock = vi.hoisted(() => {
+  const jobs = new Map<string, any>();
+  const activeJobs = new Map<string, string>();
+  const leases = new Map<string, { owner: string; expiresAt: string }>();
+  return {
+    isConfigured: vi.fn(() => true),
+    setJob: vi.fn(async (job: any) => {
+      jobs.set(job.id, job);
+    }),
+    getJob: vi.fn(async (jobId: string) => jobs.get(jobId) ?? null),
+    setActiveJob: vi.fn(async (scopeKey: string, jobId: string) => {
+      activeJobs.set(scopeKey, jobId);
+    }),
+    getActiveJob: vi.fn(async (scopeKey: string) => activeJobs.get(scopeKey) ?? null),
+    clearActiveJob: vi.fn(async (scopeKey: string, expectedJobId?: string) => {
+      if (expectedJobId && activeJobs.get(scopeKey) !== expectedJobId) return;
+      activeJobs.delete(scopeKey);
+    }),
+    acquireLease: vi.fn(async (jobId: string, owner: string, ttlSeconds: number) => {
+      const existing = leases.get(jobId);
+      if (existing && new Date(existing.expiresAt).getTime() > Date.now()) {
+        return null;
+      }
+      const lease = { owner, expiresAt: new Date(Date.now() + ttlSeconds * 1000).toISOString() };
+      leases.set(jobId, lease);
+      return lease;
+    }),
+    getLease: vi.fn(async (jobId: string) => leases.get(jobId) ?? null),
+    releaseLease: vi.fn(async (jobId: string, expectedOwner?: string) => {
+      if (expectedOwner) {
+        const current = leases.get(jobId);
+        if (!current || current.owner !== expectedOwner) return;
+      }
+      leases.delete(jobId);
+    }),
+    appendHistory: vi.fn(async () => {}),
+    listHistory: vi.fn(async () => []),
+    _jobs: jobs,
+    _activeJobs: activeJobs,
+    _leases: leases
+  };
+});
 
 const runJobMock = vi.fn();
 
-vi.mock('@vercel/kv', () => ({
-  kv: kvMock
-}));
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
 
 vi.mock('../../worker/handler', () => ({
   runJob: runJobMock
@@ -48,10 +72,13 @@ const buildJob = (jobId: string) => ({
 
 describe('handleWorkerTask', () => {
   beforeEach(() => {
-    kvStore.clear();
-    kvMock.set.mockClear();
-    kvMock.get.mockClear();
-    kvMock.del.mockClear();
+    storeMock._jobs.clear();
+    storeMock._activeJobs.clear();
+    storeMock._leases.clear();
+    storeMock.setJob.mockClear();
+    storeMock.getJob.mockClear();
+    storeMock.acquireLease.mockClear();
+    storeMock.releaseLease.mockClear();
     runJobMock.mockReset();
     process.env.KV_REST_API_URL = 'https://example.com';
     process.env.KV_REST_API_TOKEN = 'token';
@@ -106,7 +133,7 @@ describe('handleWorkerTask', () => {
       status: 'processing',
       stage: 'uploading'
     });
-    kvStore.set(`job-lease:${jobId}`, {
+    storeMock._leases.set(jobId, {
       owner: 'job-task-1',
       expiresAt: new Date(Date.now() + 60_000).toISOString()
     });

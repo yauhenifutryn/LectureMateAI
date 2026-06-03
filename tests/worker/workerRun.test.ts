@@ -12,21 +12,27 @@ import { storeResultMarkdown, storeTranscriptText } from '../../api/_lib/resultS
 import { cleanupBlobUrls } from '../../api/_lib/blobCleanup';
 import { runJob } from '../../worker/handler';
 
-const kvStore = new Map<string, any>();
+const storeMock = vi.hoisted(() => {
+  const jobs = new Map<string, any>();
+  return {
+    isConfigured: vi.fn(() => true),
+    setJob: vi.fn(async (job: any) => {
+      jobs.set(job.id, job);
+    }),
+    getJob: vi.fn(async (jobId: string) => jobs.get(jobId) ?? null),
+    setActiveJob: vi.fn(async () => {}),
+    getActiveJob: vi.fn(async () => null),
+    clearActiveJob: vi.fn(async () => {}),
+    acquireLease: vi.fn(async () => null),
+    getLease: vi.fn(async () => null),
+    releaseLease: vi.fn(async () => {}),
+    appendHistory: vi.fn(async () => {}),
+    listHistory: vi.fn(async () => []),
+    _jobs: jobs
+  };
+});
 
-const kvMock = vi.hoisted(() => ({
-  set: vi.fn(async (key: string, value: any) => {
-    kvStore.set(key, value);
-    return 'OK';
-  }),
-  get: vi.fn(async (key: string) => kvStore.get(key) ?? null),
-  lpush: vi.fn(async () => 1),
-  ltrim: vi.fn(async () => 'OK')
-}));
-
-vi.mock('@vercel/kv', () => ({
-  kv: kvMock
-}));
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
 
 vi.mock('../../api/_lib/gemini', () => ({
   uploadGeminiFiles: vi.fn(async () => [
@@ -106,11 +112,10 @@ describe('worker runJob', () => {
   let infoSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    kvStore.clear();
-    kvMock.set.mockClear();
-    kvMock.get.mockClear();
-    kvMock.lpush.mockClear();
-    kvMock.ltrim.mockClear();
+    storeMock._jobs.clear();
+    storeMock.setJob.mockClear();
+    storeMock.getJob.mockClear();
+    storeMock.appendHistory.mockClear();
     vi.mocked(uploadGeminiFiles).mockReset();
     vi.mocked(uploadGeminiFiles).mockResolvedValue([
       {
