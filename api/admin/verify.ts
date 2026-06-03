@@ -19,7 +19,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (error instanceof AccessError) {
       return res.status(401).json({ error: { code: error.code, message: error.message } });
     }
-    const message = error instanceof Error ? error.message : 'Unauthorized.';
-    return res.status(401).json({ error: { code: 'unauthorized', message } });
+    const isInfra = error instanceof Error && !(error instanceof AccessError);
+    if (isInfra) {
+      console.error('admin/verify infra error', {
+        message: error instanceof Error ? error.message : String(error)
+      });
+      return res.status(503).json({
+        error: {
+          code: 'storage_unavailable',
+          message: 'Service storage is temporarily unavailable. Please try again shortly.'
+        }
+      });
+    }
+    return res.status(401).json({ error: { code: 'unauthorized', message: 'Unauthorized.' } });
   }
 }
