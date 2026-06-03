@@ -1,9 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import handler from '../../api/demo/validate';
 
 const accessMocks = vi.hoisted(() => ({
   recordDemoValidation: vi.fn(),
   validateDemoCode: vi.fn()
+}));
+
+const storeMock = vi.hoisted(() => ({
+  hitRateLimit: vi.fn().mockResolvedValue({ allowed: true, count: 1 }),
+  isConfigured: vi.fn(() => true)
 }));
 
 vi.mock('../../api/_lib/access', () => ({
@@ -14,6 +18,10 @@ vi.mock('../../api/_lib/access', () => ({
     code = 'unauthorized';
   }
 }));
+
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
+
+import handler from '../../api/demo/validate';
 
 const buildRes = () => {
   const res: any = {};

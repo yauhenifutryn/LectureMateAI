@@ -1,6 +1,5 @@
 import type { VercelRequest } from '@vercel/node';
-import { kv } from '@vercel/kv';
-import { ensureKvConfigured } from './access.js';
+import { getStore } from './store/index.js';
 
 export class RateLimitError extends Error {
   code = 'rate_limited';
@@ -27,14 +26,15 @@ export const getRateLimit = (envKey: string, fallback: number): number =>
   getEnvNumber(process.env[envKey], fallback);
 
 const getClientIp = (req: VercelRequest): string => {
-  const forwarded = req.headers['x-forwarded-for'];
+  const headers = req.headers ?? {};
+  const forwarded = headers['x-forwarded-for'];
   if (Array.isArray(forwarded)) {
     return forwarded[0]?.split(',')[0]?.trim() || 'unknown';
   }
   if (typeof forwarded === 'string' && forwarded.length > 0) {
     return forwarded.split(',')[0]?.trim() || 'unknown';
   }
-  const realIp = req.headers['x-real-ip'];
+  const realIp = headers['x-real-ip'];
   if (typeof realIp === 'string' && realIp.length > 0) {
     return realIp.trim();
   }
@@ -47,14 +47,16 @@ export async function enforceRateLimit(
   limit: number,
   windowSeconds = getRateLimitWindowSeconds()
 ): Promise<void> {
-  ensureKvConfigured();
   const clientIp = getClientIp(req);
-  const bucketKey = `ratelimit:${key}:${clientIp}`;
-  const count = await kv.incr(bucketKey);
-  if (count === 1) {
-    await kv.expire(bucketKey, windowSeconds);
-  }
-  if (count > limit) {
-    throw new RateLimitError();
+  try {
+    const { allowed } = await getStore().hitRateLimit(`${key}:${clientIp}`, limit, windowSeconds);
+    if (!allowed) throw new RateLimitError();
+  } catch (error) {
+    if (error instanceof RateLimitError) throw error;
+    // Fail open: a storage outage must never block auth or core endpoints.
+    console.warn('Rate limit check failed open due to store error.', {
+      key,
+      message: error instanceof Error ? error.message : String(error)
+    });
   }
 }

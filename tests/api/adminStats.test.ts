@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import handler from '../../api/admin/stats';
-import { fetchBlobStats } from '../../api/_lib/blobAdmin';
 
 vi.mock('../../api/_lib/blobAdmin', () => ({
   fetchBlobStats: vi.fn()
 }));
+
+const storeMock = vi.hoisted(() => ({
+  hitRateLimit: vi.fn().mockResolvedValue({ allowed: true, count: 1 }),
+  isConfigured: vi.fn(() => true)
+}));
+
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
+
+import handler from '../../api/admin/stats';
+import { fetchBlobStats } from '../../api/_lib/blobAdmin';
 
 const createRes = () => {
   const res = {
