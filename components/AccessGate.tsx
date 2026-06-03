@@ -3,6 +3,7 @@ import type { AccessContext, AccessMode } from '../types';
 import { Icons } from './Icon';
 import { resolveAccessMode } from '../utils/accessMode';
 import { buildAccessFieldState } from '../utils/accessField';
+import { messageForAccessError } from '../utils/accessMessage';
 
 type AccessGateProps = {
   onAuthorize: (access: AccessContext) => void;
@@ -51,7 +52,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data?.error?.message || 'Invalid admin password.');
+          throw new Error(messageForAccessError(data?.error?.code, data?.error?.message || 'Invalid admin password.'));
         }
       } else {
         const response = await fetch('/api/demo/validate', {
@@ -61,7 +62,7 @@ const AccessGate: React.FC<AccessGateProps> = ({
         });
         const data = await response.json();
         if (!response.ok) {
-          throw new Error(data?.error?.message || 'Invalid demo code.');
+          throw new Error(messageForAccessError(data?.error?.code, data?.error?.message || 'Invalid demo code.'));
         }
         resolvedMode = resolveAccessMode(mode, data?.mode);
       }
