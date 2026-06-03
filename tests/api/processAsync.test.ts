@@ -11,6 +11,16 @@ vi.mock('@vercel/kv', () => ({
   kv: kvMock
 }));
 
+// Demo-code consumption + audit now route through the store (post Task 5).
+// jobStore still uses @vercel/kv in this milestone, so keep kvMock for setJob.
+const storeMock = vi.hoisted(() => ({
+  consumeDemoCode: vi.fn(async () => 2),
+  appendEvent: vi.fn(async () => {}),
+  isConfigured: vi.fn(() => true)
+}));
+
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
+
 vi.mock('../../api/_lib/gcs', async () => {
   const actual = await vi.importActual('../../api/_lib/gcs');
   return {

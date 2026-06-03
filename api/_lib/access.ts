@@ -1,10 +1,8 @@
 import type { VercelRequest } from '@vercel/node';
-import { kv } from '@vercel/kv';
 import crypto from 'crypto';
+import { getStore } from './store/index.js';
+import type { AccessEvent } from './store/types.js';
 
-const DEMO_PREFIX = 'demo:code:';
-const DEMO_SET_KEY = 'demo:codes';
-const EVENT_LIST_KEY = 'audit:events';
 const EVENT_LIMIT = 200;
 
 export type AccessMode = 'admin' | 'demo';
@@ -13,13 +11,6 @@ export type AccessResult = {
   mode: AccessMode;
   code?: string;
   remaining?: number;
-};
-
-type AccessEvent = {
-  at: string;
-  mode: AccessMode;
-  action: 'process' | 'chat' | 'auth' | 'history';
-  code?: string;
 };
 
 export class AccessError extends Error {
@@ -33,35 +24,13 @@ export class AccessError extends Error {
   }
 }
 
-function configureKvEnv(): void {
-  if (!process.env.KV_REST_API_URL && process.env.UPSTASH_REDIS_REST_URL) {
-    process.env.KV_REST_API_URL = process.env.UPSTASH_REDIS_REST_URL;
-  }
-  if (!process.env.KV_REST_API_TOKEN && process.env.UPSTASH_REDIS_REST_TOKEN) {
-    process.env.KV_REST_API_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-  }
-  if (
-    !process.env.KV_REST_API_READ_ONLY_TOKEN &&
-    process.env.UPSTASH_REDIS_REST_READ_ONLY_TOKEN
-  ) {
-    process.env.KV_REST_API_READ_ONLY_TOKEN = process.env.UPSTASH_REDIS_REST_READ_ONLY_TOKEN;
-  }
-  if (!process.env.KV_REST_API_READ_ONLY_TOKEN && process.env.KV_REST_API_TOKEN) {
-    process.env.KV_REST_API_READ_ONLY_TOKEN = process.env.KV_REST_API_TOKEN;
-  }
-}
-
 export function isKvConfigured(): boolean {
-  configureKvEnv();
-  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN);
+  return getStore().isConfigured();
 }
 
 export function ensureKvConfigured(): void {
-  configureKvEnv();
-  if (!isKvConfigured()) {
-    throw new Error(
-      'KV not configured. Set KV_REST_API_URL/KV_REST_API_TOKEN or UPSTASH_REDIS_REST_URL/UPSTASH_REDIS_REST_TOKEN.'
-    );
+  if (!getStore().isConfigured()) {
+    throw new Error('Store not configured.');
   }
 }
 
@@ -89,9 +58,8 @@ export function generateDemoCode(): string {
 
 async function logAccessEvent(event: AccessEvent): Promise<void> {
   try {
-    if (!isKvConfigured()) return;
-    await kv.lpush(EVENT_LIST_KEY, JSON.stringify(event));
-    await kv.ltrim(EVENT_LIST_KEY, 0, EVENT_LIMIT - 1);
+    if (!getStore().isConfigured()) return;
+    await getStore().appendEvent(event, EVENT_LIMIT);
   } catch {
     // Best-effort logging.
   }
@@ -99,34 +67,17 @@ async function logAccessEvent(event: AccessEvent): Promise<void> {
 
 export async function storeDemoCode(code: string, uses: number): Promise<void> {
   ensureKvConfigured();
-  const normalized = normalizeDemoCode(code);
-  await kv.set(`${DEMO_PREFIX}${normalized}`, uses);
-  await kv.sadd(DEMO_SET_KEY, normalized);
+  await getStore().setDemoCode(normalizeDemoCode(code), uses);
 }
 
 export async function listDemoCodes(): Promise<Array<{ code: string; remaining: number }>> {
   ensureKvConfigured();
-  const codes = (await kv.smembers(DEMO_SET_KEY)) as string[];
-  if (!codes || codes.length === 0) return [];
-
-  const results: Array<{ code: string; remaining: number }> = [];
-  await Promise.all(
-    codes.map(async (code) => {
-      const remaining = (await kv.get<number>(`${DEMO_PREFIX}${code}`)) ?? null;
-      if (typeof remaining === 'number') {
-        results.push({ code, remaining });
-      }
-    })
-  );
-
-  return results.sort((a, b) => a.code.localeCompare(b.code));
+  return getStore().listDemoCodes();
 }
 
 export async function revokeDemoCode(code: string): Promise<void> {
   ensureKvConfigured();
-  const normalized = normalizeDemoCode(code);
-  await kv.del(`${DEMO_PREFIX}${normalized}`);
-  await kv.srem(DEMO_SET_KEY, normalized);
+  await getStore().revokeDemoCode(normalizeDemoCode(code));
 }
 
 export async function validateDemoCode(code: string): Promise<number | null> {
@@ -137,44 +88,18 @@ export async function validateDemoCode(code: string): Promise<number | null> {
 
 export async function getDemoCodeRemaining(code: string): Promise<number | null> {
   ensureKvConfigured();
-  const normalized = normalizeDemoCode(code);
-  const remaining = await kv.get<number>(`${DEMO_PREFIX}${normalized}`);
-  if (typeof remaining !== 'number') return null;
-  return remaining;
+  return getStore().getDemoRemaining(normalizeDemoCode(code));
 }
 
 export async function consumeDemoCode(code: string): Promise<number | null> {
   ensureKvConfigured();
-  const normalized = normalizeDemoCode(code);
-  const remaining = await kv.decr(`${DEMO_PREFIX}${normalized}`);
-  if (typeof remaining !== 'number') return null;
-  if (remaining < 0) {
-    await kv.set(`${DEMO_PREFIX}${normalized}`, 0);
-    return null;
-  }
-  return remaining;
+  return getStore().consumeDemoCode(normalizeDemoCode(code));
 }
 
 export async function listAccessEvents(limit = 50): Promise<AccessEvent[]> {
   ensureKvConfigured();
   const size = Math.max(1, Math.min(limit, EVENT_LIMIT));
-  const rows = (await kv.lrange(EVENT_LIST_KEY, 0, size - 1)) as Array<
-    string | AccessEvent
-  >;
-
-  return rows
-    .map((row) => {
-      if (!row) return null;
-      if (typeof row === 'string') {
-        try {
-          return JSON.parse(row) as AccessEvent;
-        } catch {
-          return null;
-        }
-      }
-      return row;
-    })
-    .filter((row): row is AccessEvent => row !== null);
+  return getStore().listEvents(size);
 }
 
 export async function authorizeProcess(
