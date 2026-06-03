@@ -41,6 +41,34 @@ const getClientIp = (req: VercelRequest): string => {
   return req.socket?.remoteAddress || 'unknown';
 };
 
+// Per-instance in-memory fixed-window limiter, used ONLY as a fallback when the shared
+// store is unreachable. This keeps brute-force protection active during a storage outage
+// (a finite, throttled number of attempts per instance) rather than failing fully open,
+// while still never hard-blocking login the way a fail-closed gate would.
+type MemoryBucket = { count: number; resetAtMs: number };
+const memoryBuckets = new Map<string, MemoryBucket>();
+const MEMORY_BUCKET_CAP = 5000;
+
+function hitMemoryRateLimit(
+  bucketKey: string,
+  limit: number,
+  windowSeconds: number,
+  nowMs: number
+): boolean {
+  const existing = memoryBuckets.get(bucketKey);
+  if (!existing || existing.resetAtMs <= nowMs) {
+    if (memoryBuckets.size >= MEMORY_BUCKET_CAP) {
+      for (const [k, v] of memoryBuckets) {
+        if (v.resetAtMs <= nowMs) memoryBuckets.delete(k);
+      }
+    }
+    memoryBuckets.set(bucketKey, { count: 1, resetAtMs: nowMs + windowSeconds * 1000 });
+    return 1 <= limit;
+  }
+  existing.count += 1;
+  return existing.count <= limit;
+}
+
 export async function enforceRateLimit(
   req: VercelRequest,
   key: string,
@@ -53,10 +81,14 @@ export async function enforceRateLimit(
     if (!allowed) throw new RateLimitError();
   } catch (error) {
     if (error instanceof RateLimitError) throw error;
-    // Fail open: a storage outage must never block auth or core endpoints.
-    console.warn('Rate limit check failed open due to store error.', {
+    // Shared store unreachable: fall back to a per-instance in-memory limiter. A storage
+    // outage must never hard-block login (that was the original "fetch failed" bug), but it
+    // must also not strip brute-force protection from an auth endpoint by failing fully open.
+    console.warn('Rate limit store error; using in-memory fallback.', {
       key,
       message: error instanceof Error ? error.message : String(error)
     });
+    const allowed = hitMemoryRateLimit(`${key}:${clientIp}`, limit, windowSeconds, Date.now());
+    if (!allowed) throw new RateLimitError();
   }
 }

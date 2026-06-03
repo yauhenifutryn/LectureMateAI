@@ -23,8 +23,18 @@ describe('enforceRateLimit', () => {
     await expect(enforceRateLimit(req, 'admin-verify', 5)).rejects.toBeInstanceOf(RateLimitError);
   });
 
-  it('FAILS OPEN when the store is unreachable', async () => {
+  it('allows login via the in-memory fallback when the store is unreachable', async () => {
     storeMock.hitRateLimit.mockRejectedValueOnce(new TypeError('fetch failed'));
-    await expect(enforceRateLimit(req, 'admin-verify', 5)).resolves.toBeUndefined();
+    const outageReq: any = { headers: { 'x-forwarded-for': '9.9.9.9' }, socket: {} };
+    await expect(enforceRateLimit(outageReq, 'admin-verify', 5)).resolves.toBeUndefined();
+  });
+
+  it('still throttles brute force via the in-memory fallback during a store outage', async () => {
+    storeMock.hitRateLimit.mockRejectedValue(new TypeError('fetch failed'));
+    const attackReq: any = { headers: { 'x-forwarded-for': '8.8.8.8' }, socket: {} };
+    // limit = 2: first two attempts allowed, the third is throttled even though the store is down.
+    await expect(enforceRateLimit(attackReq, 'admin-verify', 2)).resolves.toBeUndefined();
+    await expect(enforceRateLimit(attackReq, 'admin-verify', 2)).resolves.toBeUndefined();
+    await expect(enforceRateLimit(attackReq, 'admin-verify', 2)).rejects.toBeInstanceOf(RateLimitError);
   });
 });
