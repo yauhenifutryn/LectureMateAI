@@ -7,7 +7,11 @@ describe('initializeChatSession', () => {
   beforeEach(() => {
     fetchMock.mockResolvedValue({
       ok: true,
-      json: async () => ({ reply: 'ok' })
+      // geminiService's parseResponse reads response.headers.get('content-type')
+      // to decide between JSON and text parsing, so the mock must expose headers.
+      headers: { get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null) },
+      json: async () => ({ reply: 'ok' }),
+      text: async () => JSON.stringify({ reply: 'ok' })
     });
     vi.stubGlobal('fetch', fetchMock);
   });

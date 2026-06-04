@@ -2,13 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import handler from '../../api/gcs/upload-url';
 
+// Rate limiting goes through getStore().hitRateLimit; mock the shared store so the
+// handler does not reach the real (GCS/Firestore-backed) store during the test.
+const storeMock = vi.hoisted(() => ({
+  hitRateLimit: vi.fn().mockResolvedValue({ allowed: true, count: 1 }),
+  isConfigured: vi.fn(() => true)
+}));
+
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
+
 vi.mock('../../api/_lib/access', () => ({
   authorizeUpload: vi.fn(async () => ({ mode: 'demo', code: 'DEMO', remaining: 3 }))
 }));
 
 vi.mock('../../api/_lib/gcs', () => ({
   buildUploadObjectName: vi.fn(() => 'uploads/job-1/test.mp3'),
-  createSignedUploadUrl: vi.fn(async () => 'https://signed-upload')
+  createSignedUploadUrl: vi.fn(async () => 'https://signed-upload'),
+  // The handler also calls getMaxUploadBytes() to enforce the size cap; the fully
+  // mocked module must provide it.
+  getMaxUploadBytes: vi.fn(() => 512 * 1024 * 1024)
 }));
 
 const createRes = () => {

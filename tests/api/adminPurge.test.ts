@@ -7,6 +7,15 @@ vi.mock('../../api/_lib/blobAdmin', () => ({
   purgeAllBlobs: vi.fn()
 }));
 
+// Rate limiting goes through getStore().hitRateLimit; mock the shared store so the
+// handler does not reach the real (GCS/Firestore-backed) store during the test.
+const storeMock = vi.hoisted(() => ({
+  hitRateLimit: vi.fn().mockResolvedValue({ allowed: true, count: 1 }),
+  isConfigured: vi.fn(() => true)
+}));
+
+vi.mock('../../api/_lib/store', () => ({ getStore: () => storeMock }));
+
 const createRes = () => {
   const res = {
     statusCode: 200,

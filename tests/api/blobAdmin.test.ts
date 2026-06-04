@@ -27,7 +27,10 @@ describe('blobAdmin helpers', () => {
       .mockResolvedValueOnce({
         files: [{ name: 'uploads/c', size: 50 }],
         nextPageToken: undefined
-      });
+      })
+      // fetchBlobStats scans both the 'uploads/' and 'results/' prefixes; the
+      // trailing call is for an empty 'results/' listing.
+      .mockResolvedValue({ files: [], nextPageToken: undefined });
 
     const stats = await fetchBlobStats();
 
@@ -46,7 +49,10 @@ describe('blobAdmin helpers', () => {
           { name: 'uploads/c', size: 300 }
         ],
         nextPageToken: undefined
-      });
+      })
+      // purgeAllBlobs scans both the 'uploads/' and 'results/' prefixes; the
+      // trailing call is for an empty 'results/' listing.
+      .mockResolvedValue({ files: [], nextPageToken: undefined });
     deleteObjectsMock.mockResolvedValue(undefined);
 
     const deleted = await purgeAllBlobs();
@@ -58,7 +64,8 @@ describe('blobAdmin helpers', () => {
   });
 
   it('returns zero when no blobs exist', async () => {
-    listObjectsMock.mockResolvedValueOnce({ files: [], nextPageToken: undefined });
+    // purgeAllBlobs scans both the 'uploads/' and 'results/' prefixes; both empty.
+    listObjectsMock.mockResolvedValue({ files: [], nextPageToken: undefined });
 
     const deleted = await purgeAllBlobs();
 
