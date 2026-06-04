@@ -66,7 +66,8 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
     adminPurgeHandler,
     adminVerifyHandler,
     adminListHandler,
-    resultsListHandler
+    resultsListHandler,
+    healthzHandler
   ] = await Promise.all([
     import('../api/process/index.js'),
     import('../api/gcs/upload-url.js'),
@@ -80,7 +81,8 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
     import('../api/admin/purge.js'),
     import('../api/admin/verify.js'),
     import('../api/admin/list.js'),
-    import('../api/results/list.js')
+    import('../api/results/list.js'),
+    import('../api/healthz.js')
   ]);
 
   cachedRoutes = {
@@ -96,7 +98,8 @@ async function getApiRoutes(): Promise<Record<string, ApiHandler>> {
     '/api/admin/purge': adminPurgeHandler.default,
     '/api/admin/verify': adminVerifyHandler.default,
     '/api/admin/list': adminListHandler.default,
-    '/api/results/list': resultsListHandler.default
+    '/api/results/list': resultsListHandler.default,
+    '/api/healthz': healthzHandler.default
   };
 
   return cachedRoutes;
