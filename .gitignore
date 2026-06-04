@@ -46,3 +46,6 @@ UI_TRINITY.md
 CLOUD_RUN_REDEPLOY.md
 security_best_practices_report.md
 docs/plans/
+
+# Local smoke-test audio fixtures (personal recordings, never commit)
+smoke/fixtures/
