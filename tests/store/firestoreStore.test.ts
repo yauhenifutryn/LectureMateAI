@@ -90,4 +90,29 @@ describe('FirestoreStore', () => {
     store = new FirestoreStore(db, () => new Date('2026-06-03T01:00:00.000Z'));
     expect(await store.getActiveJob('active:demo:ABC')).toBeNull();
   });
+
+  it('drops undefined fields on writes like the old kv JSON serialization did', async () => {
+    // Regression for prod outage 2026-06-04: the real Firestore client throws
+    // 'Cannot use "undefined" as a Firestore value (found in field "job.error")'
+    // because callers (api/process/index.ts:221, worker/handler.ts:173) clear
+    // errors with an explicit `error: undefined`. @vercel/kv JSON.stringify
+    // silently dropped those keys; the adapter must preserve that semantic.
+    const job: any = {
+      id: 'job-undef',
+      status: 'processing',
+      stage: 'dispatching',
+      request: { audio: undefined, slides: [] },
+      access: { mode: 'admin' },
+      createdAt: 't',
+      updatedAt: 't',
+      error: undefined
+    };
+    await store.setJob(job, 60);
+    const storedDoc = [...db._data.values()].find((v: any) => v.job?.id === 'job-undef');
+    expect(storedDoc).toBeDefined();
+    expect('error' in storedDoc.job).toBe(false);
+    expect('audio' in storedDoc.job.request).toBe(false);
+    const roundTripped = await store.getJob('job-undef');
+    expect(roundTripped?.status).toBe('processing');
+  });
 });

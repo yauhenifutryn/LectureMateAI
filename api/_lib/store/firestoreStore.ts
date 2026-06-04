@@ -10,6 +10,14 @@ function encodeId(key: string): string {
   return Buffer.from(key, 'utf8').toString('base64url');
 }
 
+// Exact parity with the old @vercel/kv JSON serialization: drop undefined object
+// properties. The real Firestore client otherwise rejects the whole write with
+// 'Cannot use "undefined" as a Firestore value' (prod outage 2026-06-04, where
+// callers clear job errors with an explicit `error: undefined`).
+function sanitizeForWrite<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 export class FirestoreStore implements AppStore {
   private db: Firestore;
   private now: Clock;
@@ -20,7 +28,10 @@ export class FirestoreStore implements AppStore {
       db ??
       new Firestore({
         projectId: process.env.GOOGLE_CLOUD_PROJECT || process.env.GCP_PROJECT || undefined,
-        databaseId: process.env.FIRESTORE_DATABASE_ID || '(default)'
+        databaseId: process.env.FIRESTORE_DATABASE_ID || '(default)',
+        // Defense-in-depth alongside sanitizeForWrite: never reject a write over
+        // an undefined property (matches the old kv JSON.stringify semantics).
+        ignoreUndefinedProperties: true
       });
     this.now = now;
   }
@@ -99,7 +110,7 @@ export class FirestoreStore implements AppStore {
 
   async appendEvent(event: AccessEvent, cap: number): Promise<void> {
     const col = this.db.collection('auditEvents');
-    await col.add({ ...event, _ts: this.nowMs() });
+    await col.add({ ...sanitizeForWrite(event), _ts: this.nowMs() });
     const overflow = await col.orderBy('_ts', 'desc').offset(cap).get();
     await Promise.all(overflow.docs.map((d) => d.ref.delete()));
   }
@@ -116,7 +127,7 @@ export class FirestoreStore implements AppStore {
     await this.db
       .collection('jobs')
       .doc(encodeId(job.id))
-      .set({ job, expiresAtMs: this.nowMs() + ttlSeconds * 1000 });
+      .set({ job: sanitizeForWrite(job), expiresAtMs: this.nowMs() + ttlSeconds * 1000 });
   }
 
   async getJob(jobId: string): Promise<JobRecord | null> {
@@ -181,7 +192,7 @@ export class FirestoreStore implements AppStore {
 
   async appendHistory(scopeKey: string, item: HistoryItem, cap: number): Promise<void> {
     const col = this.db.collection('jobHistory').doc(encodeId(scopeKey)).collection('items');
-    await col.add({ ...item, _ts: this.nowMs() });
+    await col.add({ ...sanitizeForWrite(item), _ts: this.nowMs() });
     const overflow = await col.orderBy('_ts', 'desc').offset(cap).get();
     await Promise.all(overflow.docs.map((d) => d.ref.delete()));
   }
